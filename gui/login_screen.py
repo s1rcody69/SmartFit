@@ -1,228 +1,451 @@
 
-
 import tkinter as tk
 from tkinter import messagebox
 from utils.auth import verify_login
+from datetime import date
 
-# Color Pallete
-BG_COLOR      = "#1a1a2e"   # Dark navy background
-CARD_COLOR    = "#16213e"   # Slightly lighter card
-ACCENT_COLOR  = "#e94560"   # Red accent
-TEXT_COLOR    = "#eaeaea"   # Light text
-SUBTEXT_COLOR = "#a0a0b0"   # Grey subtext
-INPUT_BG      = "#0f3460"   # Input field background
-BTN_COLOR     = "#e94560"   # Button color
-BTN_HOVER     = "#c73652"   # Button hover
+BG_COLOR      = "#1a1a2e"
+CARD_COLOR    = "#16213e"
+ACCENT_COLOR  = "#e94560"
+TEXT_COLOR    = "#eaeaea"
+SUBTEXT_COLOR = "#a0a0b0"
+INPUT_BG      = "#0f3460"
+BTN_COLOR     = "#e94560"
+BTN_HOVER     = "#c73652"
+TAB_ACTIVE    = "#e94560"
+TAB_INACTIVE  = "#0f3460"
 
 
-# Smartfit login window
 class LoginScreen:
+    """
+    Login screen with two tabs — Login and Register.
+    Members can self-register. Admins are created by the system only.
+    """
+
     def __init__(self, root):
         self.root = root
-        self.root.title("SmartFit Gym System ~ Login")
-        self.root.geometry("480x580")
+        self.root.title("SmartFit Gym System")
+        self.root.geometry("500x850")
         self.root.configure(bg=BG_COLOR)
         self.root.resizable(False, False)
-
-        # Center window screen
-        self.center_window(480,580)
+        self.center_window(500, 850)
         self.build_ui()
 
     def center_window(self, width, height):
-        screen_w = self.root.winfo_screenwidth()
-        screen_h = self.root.winfo_screenheight()
-        x = (screen_w - width) // 2
-        y = (screen_h- height) // 2
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        x  = (sw - width)  // 2
+        y  = (sh - height) // 2
         self.root.geometry(f"{width}x{height}+{x}+{y}")
 
+    def build_ui(self):
 
-    # Builds the widgets on the login screen
-    def build_ui(self): # FIXED: Indented to be inside the class
-
-        # LOGO/HEADER
-        header_frame = tk.Frame(self.root, bg=BG_COLOR)
-        header_frame.pack(pady=(50,10))
+        # ── Header ────────────────────────────────────────────────
+        header = tk.Frame(self.root, bg=BG_COLOR)
+        header.pack(pady=(36, 0))
 
         tk.Label(
-            header_frame,
-            text="",
-            font=("Arial", 48),
-            bg=BG_COLOR,
-            fg=ACCENT_COLOR
+            header, text="",
+            font=("Arial", 44),
+            bg=BG_COLOR, fg=ACCENT_COLOR
         ).pack()
 
         tk.Label(
-            header_frame,
-            text="Gym Management System",
-            font=("Arial", 11),
-            bg=BG_COLOR,
-            fg=SUBTEXT_COLOR
+            header, text="SmartFit",
+            font=("Arial", 26, "bold"),
+            bg=BG_COLOR, fg=TEXT_COLOR
         ).pack()
 
-        # Login Card
-        card = tk.Frame(self.root, bg=CARD_COLOR, padx=40, pady=30)
-        card.pack(padx=40, pady=20, fill="x")
-
         tk.Label(
-            card,
-            text="Sign In to Your Account",
-            font=("Arial", 13),
-            bg=CARD_COLOR,
-            fg=TEXT_COLOR
-
-        ).pack(anchor="w", pady=(0, 20))
-
-        # Username feild
-        tk.Label(
-            card,
-            text="Username",
+            header, text="Gym Management System",
             font=("Arial", 10),
-            bg=CARD_COLOR,
-            fg=SUBTEXT_COLOR
-        ).pack(anchor="w")
+            bg=BG_COLOR, fg=SUBTEXT_COLOR
+        ).pack()
 
-        self.username_var = tk.StringVar()
-        username_entry = tk.Entry(
-            card,
-            textvariable=self.username_var,
-            font=("Arial", 12),
-            bg=INPUT_BG,
-            fg=TEXT_COLOR,
-            insertbackground=TEXT_COLOR,
-            relief="flat",
-            bd=0
+        # ── Tab Switcher ──────────────────────────────────────────
+        tab_bar = tk.Frame(self.root, bg=BG_COLOR)
+        tab_bar.pack(fill="x", padx=40, pady=(20, 0))
+
+        self.login_tab_btn = tk.Button(
+            tab_bar, text="Login",
+            font=("Arial", 11, "bold"),
+            bg=TAB_ACTIVE, fg="white",
+            relief="flat", cursor="hand2",
+            command=self.show_login_tab
         )
-        username_entry.pack(fill="x", ipady=8, pady=(4, 14))
+        self.login_tab_btn.pack(side="left", expand=True, fill="x", ipady=8)
 
-        # Password Feild
-        tk.Label(
-            card,
-            text="Password",
-            font=("Arial", 10),
-            bg=CARD_COLOR,
-            fg=SUBTEXT_COLOR
-        ).pack(anchor="w")
-
-        self.password_var = tk.StringVar()
-        self.password_entry = tk.Entry(
-            card,
-            textvariable=self.password_var,
-            font=("Arial", 12),
-            bg=INPUT_BG,
-            fg= TEXT_COLOR,
-            show="●",
-            relief="flat",
-            bd=0
+        self.register_tab_btn = tk.Button(
+            tab_bar, text="Register",
+            font=("Arial", 11, "bold"),
+            bg=TAB_INACTIVE, fg=SUBTEXT_COLOR,
+            relief="flat", cursor="hand2",
+            command=self.show_register_tab
         )
-        self.password_entry.pack(fill="x", ipady=8, pady=(4, 6)) # FIXED: Added .pack()
+        self.register_tab_btn.pack(side="left", expand=True, fill="x", ipady=8)
 
-        #Hide/Show password toggle
-        self.show_pw = tk.BooleanVar(value=False)
-        tk.Checkbutton(
-            card,
-            text="Show password",
-            variable=self.show_pw, # FIXED: Added variable so toggle works
-            command=self.toggle_password,
-            bg=CARD_COLOR,
-            fg=SUBTEXT_COLOR,
-            activebackground=CARD_COLOR,
-            font=("Arial", 9)
-        ).pack(anchor="w", pady=(0, 16)) # FIXED: paddy to pady
+        # ── Card container ────────────────────────────────────────
+        self.card = tk.Frame(self.root, bg=CARD_COLOR, padx=36, pady=24)
+        self.card.pack(padx=40, pady=10, fill="both", expand=True)
 
-        # Login button
-        self.login_btn = tk.Button(
-            card,
-            text="LOGIN",
-            font=("Arial", 12, "bold"),
-            bg=BTN_COLOR,
-            fg="white",
-            relief="flat",
-            cursor="hand2",
-            command=self.attempt_login
-        )
-        self.login_btn.pack(fill="x", ipady=10)
-        self.login_btn.bind("<Enter>", lambda e: self.login_btn.config(bg=BTN_HOVER))
-        self.login_btn.bind("<Leave>", lambda e: self.login_btn.config(bg=BTN_COLOR))
-
-        # Error label(hidden by default)
-        self.error_label = tk.Label(
-            card,
-            text="",
-            font=("Arial", 10),
-            bg=CARD_COLOR,
-            fg=ACCENT_COLOR
-        )
-        self.error_label.pack(pady=(10,0))
-
-        # Footer
+        # ── Footer hint ───────────────────────────────────────────
         tk.Label(
             self.root,
-            text="Default Admin → username: admin | password: admin123",
+            text="Admin login: username: admin  |  password: admin123",
             font=("Arial", 8),
-            bg=BG_COLOR,
-            fg=SUBTEXT_COLOR
+            bg=BG_COLOR, fg=SUBTEXT_COLOR
         ).pack(pady=(0, 10))
 
-        # Allow pressing Enter to login
+        # Show login tab by default
+        self.show_login_tab()
+
+    # ── Tab Switching ─────────────────────────────────────────────
+
+    def show_login_tab(self):
+        """Switches to the Login tab."""
+        self.login_tab_btn.config(bg=TAB_ACTIVE, fg="white")
+        self.register_tab_btn.config(bg=TAB_INACTIVE, fg=SUBTEXT_COLOR)
+        self.clear_card()
+        self.build_login_form()
+
+    def show_register_tab(self):
+        """Switches to the Register tab."""
+        self.register_tab_btn.config(bg=TAB_ACTIVE, fg="white")
+        self.login_tab_btn.config(bg=TAB_INACTIVE, fg=SUBTEXT_COLOR)
+        self.clear_card()
+        self.build_register_form()
+
+    def clear_card(self):
+        """Clears the card frame before switching tabs."""
+        for widget in self.card.winfo_children():
+            widget.destroy()
+
+    # ── Login Form ────────────────────────────────────────────────
+
+    def build_login_form(self):
+        tk.Label(
+            self.card, text="Welcome Back",
+            font=("Arial", 14, "bold"),
+            bg=CARD_COLOR, fg=TEXT_COLOR
+        ).pack(anchor="w", pady=(0, 4))
+
+        tk.Label(
+            self.card, text="Sign in to your account",
+            font=("Arial", 9),
+            bg=CARD_COLOR, fg=SUBTEXT_COLOR
+        ).pack(anchor="w", pady=(0, 18))
+
+        # Username
+        self._label("Username")
+        self.login_username = self._entry()
+
+        # Password
+        self._label("Password")
+        self.login_password = self._entry(show="●")
+
+        # Show password toggle
+        self.show_pw_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            self.card, text="Show password",
+            variable=self.show_pw_var,
+            command=lambda: self.login_password.config(
+                show="" if self.show_pw_var.get() else "●"
+            ),
+            bg=CARD_COLOR, fg=SUBTEXT_COLOR,
+            selectcolor=CARD_COLOR,
+            activebackground=CARD_COLOR,
+            font=("Arial", 9)
+        ).pack(anchor="w", pady=(0, 18))
+
+        # Login button
+        btn = tk.Button(
+            self.card, text="LOGIN",
+            font=("Arial", 12, "bold"),
+            bg=BTN_COLOR, fg="white",
+            relief="flat", cursor="hand2",
+            command=self.attempt_login
+        )
+        btn.pack(fill="x", ipady=10)
+        btn.bind("<Enter>", lambda e: btn.config(bg=BTN_HOVER))
+        btn.bind("<Leave>", lambda e: btn.config(bg=BTN_COLOR))
+
+        # Error message
+        self.login_error = tk.Label(
+            self.card, text="",
+            font=("Arial", 9),
+            bg=CARD_COLOR, fg=ACCENT_COLOR
+        )
+        self.login_error.pack(pady=(10, 0))
+
+        # Switch hint
+        tk.Label(
+            self.card,
+            text="Don't have an account?",
+            font=("Arial", 9),
+            bg=CARD_COLOR, fg=SUBTEXT_COLOR
+        ).pack(pady=(14, 0))
+
+        tk.Button(
+            self.card, text="Create one here →",
+            font=("Arial", 9, "underline"),
+            bg=CARD_COLOR, fg=ACCENT_COLOR,
+            relief="flat", cursor="hand2",
+            activebackground=CARD_COLOR,
+            activeforeground=BTN_HOVER,
+            command=self.show_register_tab
+        ).pack()
+
         self.root.bind("<Return>", lambda e: self.attempt_login())
 
-    
-    # Shows or hide password characters
-    def toggle_password(self):
-        if self.show_pw.get():
-            self.password_entry.config(show="")
-        else:
-            self.password_entry.config(show="●")
+    # ── Register Form ─────────────────────────────────────────────
 
-    # Validates credentials and opens the correct dashboard
+    def build_register_form(self):
+        tk.Label(
+            self.card, text="Create Account",
+            font=("Arial", 14, "bold"),
+            bg=CARD_COLOR, fg=TEXT_COLOR
+        ).pack(anchor="w", pady=(0, 4))
+
+        tk.Label(
+            self.card, text="Register as a new gym member",
+            font=("Arial", 9),
+            bg=CARD_COLOR, fg=SUBTEXT_COLOR
+        ).pack(anchor="w", pady=(0, 14))
+
+        # Two-column layout for compact fields
+        row1 = tk.Frame(self.card, bg=CARD_COLOR)
+        row1.pack(fill="x", pady=(0, 2))
+
+        # Full Name
+        left = tk.Frame(row1, bg=CARD_COLOR)
+        left.pack(side="left", expand=True, fill="x", padx=(0, 6))
+        tk.Label(left, text="Full Name", font=("Arial", 9),
+                 bg=CARD_COLOR, fg=SUBTEXT_COLOR).pack(anchor="w")
+        self.reg_name = self._entry(parent=left)
+
+        # Phone
+        right = tk.Frame(row1, bg=CARD_COLOR)
+        right.pack(side="left", expand=True, fill="x")
+        tk.Label(right, text="Phone", font=("Arial", 9),
+                 bg=CARD_COLOR, fg=SUBTEXT_COLOR).pack(anchor="w")
+        self.reg_phone = self._entry(parent=right)
+
+        # Email
+        self._label("Email")
+        self.reg_email = self._entry()
+
+        # Username
+        self._label("Username")
+        self.reg_username = self._entry()
+
+        # Two-column for passwords
+        row2 = tk.Frame(self.card, bg=CARD_COLOR)
+        row2.pack(fill="x", pady=(0, 2))
+
+        left2 = tk.Frame(row2, bg=CARD_COLOR)
+        left2.pack(side="left", expand=True, fill="x", padx=(0, 6))
+        tk.Label(left2, text="Password", font=("Arial", 9),
+                 bg=CARD_COLOR, fg=SUBTEXT_COLOR).pack(anchor="w")
+        self.reg_password = self._entry(parent=left2, show="●")
+
+        right2 = tk.Frame(row2, bg=CARD_COLOR)
+        right2.pack(side="left", expand=True, fill="x")
+        tk.Label(right2, text="Confirm Password", font=("Arial", 9),
+                 bg=CARD_COLOR, fg=SUBTEXT_COLOR).pack(anchor="w")
+        self.reg_confirm = self._entry(parent=right2, show="●")
+
+        # Register button
+        btn = tk.Button(
+            self.card, text="CREATE ACCOUNT",
+            font=("Arial", 12, "bold"),
+            bg=BTN_COLOR, fg="white",
+            relief="flat", cursor="hand2",
+            command=self.attempt_register
+        )
+        btn.pack(fill="x", ipady=10, pady=(12, 0))
+        btn.bind("<Enter>", lambda e: btn.config(bg=BTN_HOVER))
+        btn.bind("<Leave>", lambda e: btn.config(bg=BTN_COLOR))
+
+        # Error / success message
+        self.reg_msg = tk.Label(
+            self.card, text="",
+            font=("Arial", 9),
+            bg=CARD_COLOR, fg=ACCENT_COLOR,
+            wraplength=380
+        )
+        self.reg_msg.pack(pady=(8, 0))
+
+        # Switch hint
+        tk.Label(
+            self.card, text="Already have an account?",
+            font=("Arial", 9),
+            bg=CARD_COLOR, fg=SUBTEXT_COLOR
+        ).pack(pady=(10, 0))
+
+        tk.Button(
+            self.card, text="Sign in here →",
+            font=("Arial", 9, "underline"),
+            bg=CARD_COLOR, fg=ACCENT_COLOR,
+            relief="flat", cursor="hand2",
+            activebackground=CARD_COLOR,
+            activeforeground=BTN_HOVER,
+            command=self.show_login_tab
+        ).pack()
+
+    # ── Auth Logic ────────────────────────────────────────────────
+
     def attempt_login(self):
-        username = self.username_var.get().strip()
-        password = self.password_var.get().strip()
+        username = self.login_username.get().strip()
+        password = self.login_password.get().strip()
 
         if not username or not password:
-            self.error_label.config(text="⚠ Please enter username and password.")
+            self.login_error.config(text="⚠ Please enter username and password.")
             return
-        
+
         user_data = verify_login(username, password)
 
         if user_data is None:
-            self.error_label.config(text="✗ Invalid username or password.")
+            self.login_error.config(text="✗ Invalid username or password.")
             return
-        
-        # Login successful - oppen corect dashboard
+
         self.open_dashboard(user_data)
 
-    # Closes open window and opens the right dashboard
-    def open_dashboard(self, user_data):
-       
-        self.root.destroy()
+    def attempt_register(self):
+        """Validates and creates a new member account."""
+        full_name = self.reg_name.get().strip()
+        phone     = self.reg_phone.get().strip()
+        email     = self.reg_email.get().strip()
+        username  = self.reg_username.get().strip()
+        password  = self.reg_password.get().strip()
+        confirm   = self.reg_confirm.get().strip()
 
-        new_root = tk.Tk()
+        # ── Validation ────────────────────────────────────────────
+        if not full_name or not username or not password:
+            self.reg_msg.config(
+                fg=ACCENT_COLOR,
+                text="⚠ Full name, username and password are required."
+            )
+            return
+
+        if len(username) < 3:
+            self.reg_msg.config(
+                fg=ACCENT_COLOR,
+                text="⚠ Username must be at least 3 characters."
+            )
+            return
+
+        if len(password) < 6:
+            self.reg_msg.config(
+                fg=ACCENT_COLOR,
+                text="⚠ Password must be at least 6 characters."
+            )
+            return
+
+        if password != confirm:
+            self.reg_msg.config(
+                fg=ACCENT_COLOR,
+                text="⚠ Passwords do not match."
+            )
+            return
+
+        # ── Save to database ──────────────────────────────────────
+        from utils.auth import hash_password
+        from database.db_manager import DatabaseManager
+        import sqlite3
+
+        db  = DatabaseManager()
+        conn = db.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Create user account
+            cursor.execute("""
+                INSERT INTO users (username, password, role, full_name, email, phone)
+                VALUES (?, ?, 'member', ?, ?, ?)
+            """, (username, hash_password(password), full_name, email, phone))
+
+            user_id = cursor.lastrowid
+
+            # Create member profile with Basic plan by default
+            today = str(date.today())
+            cursor.execute("""
+                INSERT INTO members
+                (user_id, membership_plan, membership_start,
+                 membership_end, status)
+                VALUES (?, 'Basic', ?, ?, 'Active')
+            """, (user_id, today, today))  # Admin upgrades plan later
+
+            conn.commit()
+            conn.close()
+
+            # ── Success ───────────────────────────────────────────
+            self.reg_msg.config(
+                fg="#2ecc71",
+                text="✅ Account created! You can now log in."
+            )
+
+            # Clear fields and switch to login after 1.5 seconds
+            self.root.after(1500, self.show_login_tab)
+
+        except sqlite3.IntegrityError:
+            conn.close()
+            self.reg_msg.config(
+                fg=ACCENT_COLOR,
+                text="✗ Username already taken. Please choose another."
+            )
+
+    # ── Dashboard Redirect ────────────────────────────────────────
+
+    def open_dashboard(self, user_data):
+        """Hides login and opens the correct dashboard."""
+        self.root.withdraw()
+        dashboard_window = tk.Toplevel(self.root)
+        dashboard_window.protocol("WM_DELETE_WINDOW", self.root.destroy)
 
         if user_data["role"] == "admin":
             from models.admin import Admin
             from gui.admin_dashboard import AdminDashboard
             user = Admin(
-                user_data["id"],
-                user_data["username"],
+                user_data["id"], user_data["username"],
                 user_data["full_name"],
                 user_data["email"] or "",
                 user_data["phone"] or ""
             )
-            AdminDashboard(new_root, user)
-
+            AdminDashboard(dashboard_window, user)
         else:
             from models.member import Member
             from gui.member_dashboard import MemberDashboard
             user = Member(
-                user_data["id"],
-                user_data["username"],
+                user_data["id"], user_data["username"],
                 user_data["full_name"],
                 user_data["email"] or "",
                 user_data["phone"] or ""
             )
-            MemberDashboard(new_root, user)
+            MemberDashboard(dashboard_window, user)
 
-        new_root.mainloop()
+    # ── Widget Helpers ────────────────────────────────────────────
+
+    def _label(self, text):
+        tk.Label(
+            self.card, text=text,
+            font=("Arial", 9),
+            bg=CARD_COLOR, fg=SUBTEXT_COLOR
+        ).pack(anchor="w")
+
+    def _entry(self, parent=None, show=""):
+        parent = parent or self.card
+        var = tk.StringVar()
+        e = tk.Entry(
+            parent,
+            textvariable=var,
+            font=("Arial", 11),
+            bg=INPUT_BG, fg=TEXT_COLOR,
+            insertbackground=TEXT_COLOR,
+            relief="flat", bd=0,
+            show=show
+        )
+        e.pack(fill="x", ipady=7, pady=(1, 0))
+        e.get = var.get  # shortcut so we can call entry.get()
+        return e
 
     
