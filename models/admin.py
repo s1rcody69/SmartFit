@@ -1,4 +1,3 @@
-# models/admin.py
 import sqlite3
 from models.user import User
 from database.db_manager import DatabaseManager
