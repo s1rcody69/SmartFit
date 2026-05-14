@@ -358,7 +358,7 @@ class AdminDashboard:
             else:
                 messagebox.showerror("Error", msg, parent=win)
 
-        ActionButton(win, "Save Member", submit, icon="💾").pack(
+        ActionButton(win, "Save Member", submit, icon="").pack(
             padx=24, pady=8, fill="x"
         )
         ActionButton(win, "Cancel", win.destroy, style="neutral").pack(
@@ -491,7 +491,7 @@ class AdminDashboard:
             win.destroy()
             self.load_trainers_table()
 
-        ActionButton(win, "Save Trainer", submit, icon="💾").pack(
+        ActionButton(win, "Save Trainer", submit, icon="").pack(
             padx=24, pady=10, fill="x"
         )
         ActionButton(win, "Cancel", win.destroy, style="neutral").pack(
@@ -602,7 +602,7 @@ class AdminDashboard:
             except Exception as ex:
                 messagebox.showerror("Error", str(ex), parent=win)
 
-        ActionButton(win, "Save Plan", submit, icon="💾").pack(
+        ActionButton(win, "Save Plan", submit, icon="").pack(
             padx=24, pady=10, fill="x"
         )
         ActionButton(win, "Cancel", win.destroy, style="neutral").pack(
@@ -879,7 +879,7 @@ class AdminDashboard:
             win.destroy()
             self.load_workouts_table()
 
-        ActionButton(win, "Assign Plan", submit, icon="💾").pack(
+        ActionButton(win, "Assign Plan", submit, icon="").pack(
             padx=24, pady=4, fill="x"
         )
         ActionButton(win, "Cancel", win.destroy, style="neutral").pack(
