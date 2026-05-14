@@ -6,7 +6,7 @@ from database.db_manager import DatabaseManager
 
 class Admin(User):
     """
-    ADMIN user — inherits everything from User.
+    ADMIN user — inherits everything from User...
     
     OOP Concept - INHERITANCE:
     Admin gets all User methods for free, plus
