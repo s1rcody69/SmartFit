@@ -5,7 +5,7 @@ from database.db_manager import DatabaseManager
 
 class User:
     """
-    BASE CLASS for all users in the system.
+    BASE CLASS for all users in the system...
     
     OOP Concept - ABSTRACTION:
     This class defines WHAT a user can do (the interface),
