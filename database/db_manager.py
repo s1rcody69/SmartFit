@@ -183,4 +183,3 @@ class DatabaseManager:
         conn.commit()
         conn.close()
 
-
