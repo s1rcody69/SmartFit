@@ -201,3 +201,5 @@ class Admin(User):
             "monthly_revenue": monthly_revenue,
             "today_attendance": today_attendance,
         }
+
+
