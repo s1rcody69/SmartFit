@@ -66,3 +66,4 @@ class User:
     def __str__(self):
         """String representation — useful for debugging."""
         return f"{self.role.capitalize()}: {self.full_name} (@{self.username})"
+
