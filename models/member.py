@@ -1,5 +1,3 @@
-# models/member.py
-
 from models.user import User
 
 
