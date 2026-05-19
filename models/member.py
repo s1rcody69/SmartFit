@@ -46,7 +46,7 @@ class Member(User):
         conn = self._db.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT check_in, check_out FROM attendance
+            SELECT id, check_in, check_out FROM attendance
             WHERE member_id = ?
             ORDER BY check_in DESC
             LIMIT 30
