@@ -1,15 +1,3 @@
-# =============================================================
-# The first screen users see when the app starts.
-# Contains two tabs:
-#   Login    — existing users sign in
-#   Register — new members create an account
-#
-# OOP Concept - ENCAPSULATION:
-# All login and registration logic is contained in this one
-# class. The outside world just calls LoginScreen(root) and
-# this class manages everything internally.
-# =============================================================
-
 import tkinter as tk
 from tkinter import messagebox
 from utils.auth import verify_login

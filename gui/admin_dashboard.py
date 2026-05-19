@@ -1,572 +1,421 @@
-# =============================================================
-# The Admin Dashboard — the main screen for admin users.
-#
-# Layout:
-#   Left  — fixed sidebar with navigation buttons
-#   Right — content area that swaps between sections
-#
-# Sections: Overview, Members, Trainers, Plans,
-#           Payments, Attendance, Workouts, Analytics
-#
-# OOP Concept - ENCAPSULATION:
-# All admin UI logic and data operations are contained here.
-# The sidebar, section rendering, and popup forms are all
-# private methods (prefixed with _) that the outside world
-# does not need to know about.
-# =============================================================
-
+ # # =========================================================================================
+# Admin Dashboard — main screen for admin users. Handles all admin UI logic and layout.
+# OOP Concepts: ENCAPSULATION (private rendering methods) & COMPOSITION (delegates to Admin model)
+# =========================================================================================
 import tkinter as tk
 from tkinter import ttk, messagebox
 from gui.components import (
-    SidebarButton, make_table, header, card,
-    form_row, popup, popup_header, dropdown,
-    btn, lbl,
-    BG_COLOR, SIDEBAR_COLOR, CARD_COLOR, ACCENT_COLOR,
-    TEXT_COLOR, SUBTEXT_COLOR, SUCCESS_COLOR,
+    SidebarButton, make_table, header, card, form_row, popup, popup_header, dropdown, btn, lbl,
+    BG_COLOR, SIDEBAR_COLOR, CARD_COLOR, ACCENT_COLOR, TEXT_COLOR, SUBTEXT_COLOR, SUCCESS_COLOR,
     WARNING_COLOR, INPUT_BG
 )
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
-
 class AdminDashboard:
-    """
-    The admin dashboard window.
-
-    Receives an Admin model instance (self.user) which provides
-    all database operations. The dashboard calls methods on the
-    Admin model to read and write data, then displays results.
-
-    OOP Concept - COMPOSITION:
-    AdminDashboard does not do database work itself.
-    It delegates that to the Admin model instance (self.user).
-    """
-
+    """The admin dashboard window. Delegates database tasks to Admin model instance (self.user)."""
     def __init__(self, root, user):
-        """
-        Initialises the dashboard window and builds the layout.
-
-        Parameters:
-            root — the Toplevel window opened after login
-            user — an Admin model instance with db methods
-        """
-        self.root = root
-        self.user = user
-        self.logout_callback = None
-
+        self.root, self.user, self.logout_callback = root, user, None
         self.root.title("SmartFit  -  Admin Dashboard")
         self.root.geometry("1200x720")
         self.root.configure(bg=BG_COLOR)
-
-        # Centre window on screen
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
-        self.root.geometry(
-            f"1200x720+{(sw - 1200) // 2}+{(sh - 720) // 2}")
-
+        self.root.geometry(f"1200x720+{(sw - 1200) // 2}+{(sh - 720) // 2}")
         self._build_layout()
-        self.show_overview()   # load Overview section on start
+        self.show_overview()
 
     # ── Layout builders ───────────────────────────────────────
-
     def _build_layout(self):
-        """
-        Creates the two-column layout:
-          Left  — sidebar (fixed width, never resizes)
-          Right — content area (fills remaining space)
-        """
-        self.sidebar = tk.Frame(
-            self.root, bg=SIDEBAR_COLOR, width=220)
+        """Creates the fixed left sidebar and expanding right content frames."""
+        self.sidebar = tk.Frame(self.root, bg=SIDEBAR_COLOR, width=220)
         self.sidebar.pack(side="left", fill="y")
-        self.sidebar.pack_propagate(False)   # prevent shrinking
-
+        self.sidebar.pack_propagate(False)
         self.content = tk.Frame(self.root, bg=BG_COLOR)
         self.content.pack(side="right", fill="both", expand=True)
-
         self._build_sidebar()
 
     def _build_sidebar(self):
-        """
-        Populates the sidebar with:
-          - App logo / name
-          - Logged-in admin name
-          - Navigation buttons (one per section)
-          - Logout button pinned to the bottom
-        """
-        # Logo area
+        """Populates the sidebar with branding, navigation items, and a logout button."""
         logo = tk.Frame(self.sidebar, bg=ACCENT_COLOR, pady=18)
         logo.pack(fill="x")
-        tk.Label(
-            logo, text="SMARTFIT",
-            font=("Arial", 16, "bold"),
-            bg=ACCENT_COLOR, fg="white"
-        ).pack()
-        tk.Label(
-            logo, text="Admin Panel",
-            font=("Arial", 9),
-            bg=ACCENT_COLOR, fg="#ffd0d8"
-        ).pack()
-
-        # Admin name below logo
-        lbl(self.sidebar, self.user.full_name, 9,
-            color=SUBTEXT_COLOR, bg=SIDEBAR_COLOR,
-            wraplength=200).pack(pady=(10, 4))
-
-        tk.Frame(self.sidebar, bg=CARD_COLOR, height=1).pack(
-            fill="x", padx=14, pady=6)
-
-        # Navigation items — (label, method to call on click)
-        nav = [
-            ("Overview",   self.show_overview),
-            ("Members",    self.show_members),
-            ("Trainers",   self.show_trainers),
-            ("Plans",      self.show_plans),
-            ("Payments",   self.show_payments),
-            ("Attendance", self.show_attendance),
-            ("Workouts",   self.show_workouts),
-            ("Analytics",  self.show_analytics),
-        ]
-
-        # Keep a reference to each button so we can
-        # highlight the active one when sections change
+        tk.Label(logo, text="SMARTFIT", font=("Arial", 16, "bold"), bg=ACCENT_COLOR, fg="white").pack()
+        tk.Label(logo, text="Admin Panel", font=("Arial", 9), bg=ACCENT_COLOR, fg="#ffd0d8").pack()
+        lbl(self.sidebar, self.user.full_name, 9, color=SUBTEXT_COLOR, bg=SIDEBAR_COLOR, wraplength=200).pack(pady=(10, 4))
+        tk.Frame(self.sidebar, bg=CARD_COLOR, height=1).pack(fill="x", padx=14, pady=6)
+        
+        nav = [("Overview", self.show_overview), ("Members", self.show_members), ("Trainers", self.show_trainers), ("Plans", self.show_plans), ("Payments", self.show_payments), ("Attendance", self.show_attendance), ("Workouts", self.show_workouts), ("Analytics", self.show_analytics)]
         self.nav_btns = {}
         for name, cmd in nav:
             b = SidebarButton(self.sidebar, name, cmd)
             b.pack(fill="x", padx=8, pady=2)
             self.nav_btns[name] = b
 
-        # Divider then logout button pinned to the bottom
-        tk.Frame(self.sidebar, bg=CARD_COLOR, height=1).pack(
-            fill="x", padx=14, pady=6, side="bottom")
-        btn(
-            self.sidebar, "Logout", self.logout, bg="#c0392b"
-        ).pack(fill="x", padx=8, pady=8, side="bottom")
+        tk.Frame(self.sidebar, bg=CARD_COLOR, height=1).pack(fill="x", padx=14, pady=6, side="bottom")
+        btn(self.sidebar, "Logout", self.logout, bg="#c0392b").pack(fill="x", padx=8, pady=8, side="bottom")
 
     # ── Navigation helpers ────────────────────────────────────
-
     def _set_nav(self, name):
-        """
-        Highlights the active sidebar button and resets all others.
-        Called at the start of every show_* section method.
-        """
-        for k, b in self.nav_btns.items():
-            b.set_active() if k == name else b.set_inactive()
+        """Highlights active sidebar button and resets others."""
+        for k, b in self.nav_btns.items(): b.set_active() if k == name else b.set_inactive()
 
     def _clear(self):
-        """
-        Removes all widgets from the content area.
-        Called before rendering a new section so the old one
-        is fully replaced.
-        """
-        for widget in self.content.winfo_children():
-            widget.destroy()
+        """Destroys existing content widgets prior to a section transition."""
+        for widget in self.content.winfo_children(): widget.destroy()
 
     def _frame(self):
-        """
-        Creates and returns a padded content frame inside the
-        content area. Every section starts by calling this.
-        """
+        """Generates a standard padded workspace container for target active sections."""
         f = tk.Frame(self.content, bg=BG_COLOR, padx=24, pady=20)
         f.pack(fill="both", expand=True)
         return f
 
     # ── Overview section ──────────────────────────────────────
-
     def show_overview(self):
-        """
-        Displays the dashboard home screen with:
-          - Four stat cards (members, trainers, revenue, check-ins)
-          - A table of the 10 most recent members
-        Data is fetched live from the database on every visit.
-        """
+        """Displays home utility screen showcasing critical system statistics and recent sign-ups."""
         self._clear()
         self._set_nav("Overview")
         f = self._frame()
-
-        header(f, "Dashboard Overview",
-               date.today().strftime("%B %d, %Y")).pack(
-            fill="x", pady=(0, 18))
-
-        # Fetch live stats from the Admin model
+        header(f, "Dashboard Overview", date.today().strftime("%B %d, %Y")).pack(fill="x", pady=(0, 18))
+        
         stats = self.user.get_dashboard_stats()
-
-        # Stat cards row
         row = tk.Frame(f, bg=BG_COLOR)
         row.pack(fill="x", pady=(0, 20))
 
-        for i, (title, val, color) in enumerate([
-            ("Active Members",
-             stats["active_members"],   ACCENT_COLOR),
-            ("Active Trainers",
-             stats["active_trainers"],  SUCCESS_COLOR),
-            ("Monthly Revenue",
-             f"KES {stats['monthly_revenue']:,.0f}", WARNING_COLOR),
-            ("Today Check-ins",
-             stats["today_attendance"], "#9b59b6"),
-        ]):
+        stat_cards = [("Active Members", stats["active_members"], ACCENT_COLOR), ("Active Trainers", stats["active_trainers"], SUCCESS_COLOR), ("Monthly Revenue", f"KES {stats['monthly_revenue']:,.0f}", WARNING_COLOR), ("Today Check-ins", stats["today_attendance"], "#9b59b6")]
+        for i, (title, val, color) in enumerate(stat_cards):
             c = card(row)
             c.grid(row=0, column=i, padx=6, sticky="ew")
             row.columnconfigure(i, weight=1)
-            lbl(c, str(val), 20, bold=True,
-                color=color, bg=CARD_COLOR).pack(anchor="w")
-            lbl(c, title, 9,
-                color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w")
+            lbl(c, str(val), 20, bold=True, color=color, bg=CARD_COLOR).pack(anchor="w")
+            lbl(c, title, 9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w")
 
-        # Recent members preview table
-        lbl(f, "Recent Members", 13, bold=True).pack(
-            anchor="w", pady=(4, 6))
-        tree, tf = make_table(
-            f, ["Name", "Username", "Plan", "Status", "Expires"], 8)
+        lbl(f, "Recent Members", 13, bold=True).pack(anchor="w", pady=(4, 6))
+        tree, tf = make_table(f, ["Name", "Username", "Plan", "Status", "Expires"], 8)
         tf.pack(fill="both", expand=True)
-
         for m in self.user.get_all_members()[:10]:
-            tree.insert("", "end", values=(
-                m["full_name"], m["username"],
-                m["membership_plan"], m["status"],
-                m["membership_end"] or "N/A"))
+            tree.insert("", "end", values=(m["full_name"], m["username"], m["membership_plan"], m["status"], m["membership_end"] or "N/A"))
 
     # ── Members section ───────────────────────────────────────
-
     def show_members(self):
-        """
-        Displays the member management screen with:
-          - Live search bar (filters as you type)
-          - Add / Edit / Delete / Check-In action buttons
-          - Full members table with 8 columns
-        """
+        """Renders searchable master membership table alongside control actions."""
         self._clear()
         self._set_nav("Members")
         f = self._frame()
-
-        header(f, "Member Management",
-               "Add, edit, search and manage members").pack(
-            fill="x", pady=(0, 14))
-
-        # Top action bar
+        header(f, "Member Management", "Add, edit, search and manage members").pack(fill="x", pady=(0, 14))
+        
         top = tk.Frame(f, bg=BG_COLOR)
         top.pack(fill="x", pady=(0, 10))
-
-        # Search entry — filters table as user types
         self._sv = tk.StringVar()
-        se = tk.Entry(
-            top, textvariable=self._sv,
-            font=("Arial", 11), bg=CARD_COLOR,
-            fg=TEXT_COLOR, insertbackground=TEXT_COLOR,
-            relief="flat"
-        )
+        se = tk.Entry(top, textvariable=self._sv, font=("Arial", 11), bg=CARD_COLOR, fg=TEXT_COLOR, insertbackground=TEXT_COLOR, relief="flat")
         se.pack(side="left", ipady=7, ipadx=10, padx=(0, 6))
         se.insert(0, "Search members...")
-        se.bind("<FocusIn>",
-                lambda e: se.delete(0, "end")
-                if se.get() == "Search members..." else None)
-        se.bind("<KeyRelease>",
-                lambda e: self._load_members(self._sv.get()))
+        se.bind("<FocusIn>", lambda e: se.delete(0, "end") if se.get() == "Search members..." else None)
+        se.bind("<KeyRelease>", lambda e: self._load_members(self._sv.get()))
 
-        # Action buttons
-        for text, cmd, bg in [
-            ("Add Member",    self._add_member_form,  BG_COLOR),
-            ("Edit Member",   self._edit_member_form, CARD_COLOR),
-            ("Delete Member", self._delete_member,    "#c0392b"),
-            ("Check-In",      self._record_checkin,   "#27ae60"),
-        ]:
-            btn(top, text, cmd, bg=bg).pack(side="left", padx=3)
+        actions = [("Add Member", self._add_member_form, BG_COLOR), ("Edit Member", self._edit_member_form, CARD_COLOR), ("Delete Member", self._delete_member, "#c0392b"), ("Check-In", self._record_checkin, "#27ae60")]
+        for text, cmd, bg in actions: btn(top, text, cmd, bg=bg).pack(side="left", padx=3)
 
-        # Members table
-        cols = ["ID", "Full Name", "Username", "Email",
-                "Phone", "Plan", "Status", "Expires"]
+        cols = ["ID", "Full Name", "Username", "Email", "Phone", "Plan", "Status", "Expires"]
         self.mtree, tf = make_table(f, cols, 16)
         tf.pack(fill="both", expand=True)
-
-        # Set custom column widths
-        for col, w in zip(cols, [40, 150, 110, 170, 110, 90, 80, 100]):
-            self.mtree.column(col, width=w)
-
+        for col, w in zip(cols, [40, 150, 110, 170, 110, 90, 80, 100]): self.mtree.column(col, width=w)
         self._load_members()
 
     def _load_members(self, kw=""):
-        """
-        Clears and reloads the members table.
-        If kw is provided and is not the placeholder text,
-        runs a search query; otherwise loads all members.
-
-        Parameters:
-            kw — search keyword (default empty = show all)
-        """
-        for r in self.mtree.get_children():
-            self.mtree.delete(r)
-
-        data = (
-            self.user.search_members(kw)
-            if kw and kw != "Search members..."
-            else self.user.get_all_members()
-        )
-
+        """Fills members dataset filtering dynamically if keyword arguments are passed."""
+        for r in self.mtree.get_children(): self.mtree.delete(r)
+        data = self.user.search_members(kw) if kw and kw != "Search members..." else self.user.get_all_members()
         for m in data:
-            self.mtree.insert("", "end", values=(
-                m["id"], m["full_name"], m["username"],
-                m["email"] or "", m["phone"] or "",
-                m["membership_plan"], m["status"],
-                m["membership_end"] or "N/A"))
+            self.mtree.insert("", "end", values=(m["id"], m["full_name"], m["username"], m["email"] or "", m["phone"] or "", m["membership_plan"], m["status"], m["membership_end"] or "N/A"))
 
     def _selected(self, tree):
-        """
-        Returns the values tuple of the selected row in a table,
-        or None if nothing is selected.
-        Used by all delete/edit methods before acting on a row.
-        """
+        """Helper referencing specific targeted line index inside tables."""
         sel = tree.selection()
         return tree.item(sel[0])["values"] if sel else None
 
     def _add_member_form(self):
-        """
-        Opens a popup form to create a new member account.
-        """
+        """Creates user account generation popup modal window."""
         win = popup(self.root, "Add Member", 450, 640)
         popup_header(win, "Add New Member")
-
         fields = {}
-        for k, lb, sh in [
-            ("full_name", "Full Name", ""),
-            ("username",  "Username",  ""),
-            ("password",  "Password",  "*"),
-            ("email",     "Email",     ""),
-            ("phone",     "Phone",     ""),
-        ]:
-            fields[k] = form_row(win, lb, show=sh)
+        form_config = [("full_name", "Full Name", ""), ("username", "Username", ""), ("password", "Password", "*"), ("email", "Email", ""), ("phone", "Phone", "")]
+        for k, lb, sh in form_config: fields[k] = form_row(win, lb, show=sh)
 
         plans = self.user.get_all_plans()
-        lbl(win, "Membership Plan", 9,
-            color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
+        lbl(win, "Membership Plan", 9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
         pcb, pvar = dropdown(win, [p["plan_name"] for p in plans])
         pcb.pack(fill="x", padx=22, ipady=6, pady=(2, 10))
 
-        lbl(win, "Start Date (YYYY-MM-DD)", 9,
-            color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
+        lbl(win, "Start Date (YYYY-MM-DD)", 9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
         svar = tk.StringVar(value=str(date.today()))
-        tk.Entry(
-            win, textvariable=svar, font=("Arial", 11),
-            bg=INPUT_BG, fg=TEXT_COLOR,
-            insertbackground=TEXT_COLOR, relief="flat"
-        ).pack(fill="x", padx=22, ipady=7, pady=(2, 14))
+        tk.Entry(win, textvariable=svar, font=("Arial", 11), bg=INPUT_BG, fg=TEXT_COLOR, insertbackground=TEXT_COLOR, relief="flat").pack(fill="x", padx=22, ipady=7, pady=(2, 14))
 
         def save():
             d = {k: e.var.get().strip() for k, e in fields.items()}
-
             if not all([d["full_name"], d["username"], d["password"]]):
-                messagebox.showerror(
-                    "Error",
-                    "Name, username and password are required.",
-                    parent=win)
+                messagebox.showerror("Error", "Name, username and password are required.", parent=win)
                 return
-
-            sel_plan = next(
-                (p for p in plans if p["plan_name"] == pvar.get()),
-                None)
+            sel_plan = next((p for p in plans if p["plan_name"] == pvar.get()), None)
             try:
-                sd  = date.fromisoformat(svar.get().strip())
-                end = str(sd + relativedelta(
-                    months=sel_plan["duration_months"]))
+                sd = date.fromisoformat(svar.get().strip())
+                end = str(sd + relativedelta(months=sel_plan["duration_months"]))
             except Exception:
-                messagebox.showerror(
-                    "Error", "Invalid date format.", parent=win)
+                messagebox.showerror("Error", "Invalid date format.", parent=win)
                 return
-
-            ok, msg = self.user.add_member(
-                d["username"], d["password"], d["full_name"],
-                d["email"], d["phone"], pvar.get(), str(sd), end)
-
+            ok, msg = self.user.add_member(d["username"], d["password"], d["full_name"], d["email"], d["phone"], pvar.get(), str(sd), end)
             if ok:
-                messagebox.showinfo("Success", msg, parent=win)
-                win.destroy()
-                self._load_members()
-            else:
-                messagebox.showerror("Error", msg, parent=win)
+                messagebox.showinfo("Success", msg, parent=win); win.destroy(); self._load_members()
+            else: messagebox.showerror("Error", msg, parent=win)
 
         btn(win, "Save Member", save).pack(fill="x", padx=22, pady=6)
-        btn(win, "Cancel", win.destroy,
-            bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
+        btn(win, "Cancel", win.destroy, bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
 
     def _edit_member_form(self):
-        """
-        Opens a popup pre-filled with the selected member's data.
-        """
+        """Launches target information modifying entry frame."""
         vals = self._selected(self.mtree)
-        if not vals:
-            messagebox.showwarning("Warning", "Select a member first.")
-            return
-
-        uid, name, _, email, phone, plan, status = (
-            vals[0], vals[1], vals[2],
-            vals[3], vals[4], vals[5], vals[6])
+        if not vals: messagebox.showwarning("Warning", "Select a member first."); return
+        uid, name, _, email, phone, plan, status = vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6]
 
         win = popup(self.root, "Edit Member", 440, 460)
         popup_header(win, "Edit Member")
+        fn, em, ph = form_row(win, "Full Name", value=name), form_row(win, "Email", value=email), form_row(win, "Phone", value=phone)
 
-        fn = form_row(win, "Full Name", value=name)
-        em = form_row(win, "Email",     value=email)
-        ph = form_row(win, "Phone",     value=phone)
-
-        lbl(win, "Plan", 9,
-            color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
-        pcb, pvar = dropdown(
-            win, [p["plan_name"] for p in self.user.get_all_plans()],
-            plan)
+        lbl(win, "Plan", 9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
+        pcb, pvar = dropdown(win, [p["plan_name"] for p in self.user.get_all_plans()], plan)
         pcb.pack(fill="x", padx=22, ipady=6, pady=(2, 10))
 
-        lbl(win, "Status", 9,
-            color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
-        scb, svar = dropdown(
-            win, ["Active", "Inactive", "Suspended"], status)
+        lbl(win, "Status", 9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
+        scb, svar = dropdown(win, ["Active", "Inactive", "Suspended"], status)
         scb.pack(fill="x", padx=22, ipady=6, pady=(2, 14))
 
         def save():
-            if not fn.var.get().strip():
-                messagebox.showerror(
-                    "Error", "Name required.", parent=win)
-                return
-
+            if not fn.var.get().strip(): messagebox.showerror("Error", "Name required.", parent=win); return
             conn = self.user._db.get_connection()
-            cur  = conn.cursor()
-
-            cur.execute(
-                "UPDATE users SET full_name=?, email=?, phone=?"
-                " WHERE id=?",
-                (fn.var.get().strip(), em.var.get().strip(),
-                 ph.var.get().strip(), uid))
-
-            cur.execute(
-                "UPDATE members SET membership_plan=?, status=?"
-                " WHERE user_id=?",
-                (pvar.get(), svar.get(), uid))
-
-            conn.commit()
-            conn.close()
-
-            messagebox.showinfo("Saved", "Member updated!", parent=win)
-            win.destroy()
-            self._load_members()
+            cur = conn.cursor()
+            cur.execute("UPDATE users SET full_name=?, email=?, phone=? WHERE id=?", (fn.var.get().strip(), em.var.get().strip(), ph.var.get().strip(), uid))
+            cur.execute("UPDATE members SET membership_plan=?, status=? WHERE user_id=?", (pvar.get(), svar.get(), uid))
+            conn.commit(); conn.close()
+            messagebox.showinfo("Saved", "Member updated!", parent=win); win.destroy(); self._load_members()
 
         btn(win, "Save Changes", save).pack(fill="x", padx=22, pady=6)
-        btn(win, "Cancel", win.destroy,
-            bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
+        btn(win, "Cancel", win.destroy, bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
 
     def _delete_member(self):
-        """Deletes the selected member after confirmation."""
+        """Purges linked rows relating to specific selected active member account."""
         vals = self._selected(self.mtree)
-        if not vals:
-            messagebox.showwarning("Warning", "Select a member first.")
-            return
-
-        if messagebox.askyesno(
-                "Delete",
-                f"Delete '{vals[1]}'? This cannot be undone."):
-            self.user.delete_member(vals[0])
-            self._load_members()
+        if not vals: messagebox.showwarning("Warning", "Select a member first."); return
+        if messagebox.askyesno("Delete", f"Delete '{vals[1]}'? This cannot be undone."):
+            self.user.delete_member(vals[0]); self._load_members()
 
     def _record_checkin(self):
-        """Records a gym check-in for the selected member."""
+        """Injects logging verification timestamps down inside SQLite storage engines."""
         vals = self._selected(self.mtree)
-        if not vals:
-            messagebox.showwarning("Warning", "Select a member first.")
-            return
-
+        if not vals: messagebox.showwarning("Warning", "Select a member first."); return
         conn = self.user._db.get_connection()
-        cur  = conn.cursor()
-
-        cur.execute(
-            "SELECT id FROM members WHERE user_id=?", (vals[0],))
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM members WHERE user_id=?", (vals[0],))
         row = cur.fetchone()
-
         if row:
-            cur.execute(
-                "INSERT INTO attendance (member_id) VALUES (?)",
-                (row["id"],))
-            conn.commit()
-            messagebox.showinfo(
-                "Check-In", f"{vals[1]} checked in.")
-
+            cur.execute("INSERT INTO attendance (member_id) VALUES (?)", (row["id"],))
+            conn.commit(); messagebox.showinfo("Check-In", f"{vals[1]} checked in.")
         conn.close()
 
     # ── Trainers section ──────────────────────────────────────
-
     def show_trainers(self):
-        """Displays the trainer management screen."""
-        self._clear()
-        self._set_nav("Trainers")
-        f = self._frame()
-
-        header(f, "Trainer Management",
-               "Manage gym trainers").pack(fill="x", pady=(0, 14))
-
+        """Displays trainer view tab."""
+        self._clear(); self._set_nav("Trainers"); f = self._frame()
+        header(f, "Trainer Management", "Manage gym trainers").pack(fill="x", pady=(0, 14))
         top = tk.Frame(f, bg=BG_COLOR)
         top.pack(fill="x", pady=(0, 10))
-        btn(top, "Add Trainer",
-            self._add_trainer_form).pack(side="left", padx=3)
-        btn(top, "Delete Trainer",
-            self._delete_trainer, bg="#c0392b").pack(side="left", padx=3)
+        btn(top, "Add Trainer", self._add_trainer_form).pack(side="left", padx=3)
+        btn(top, "Delete Trainer", self._delete_trainer, bg="#c0392b").pack(side="left", padx=3)
 
-        cols = ["ID", "Full Name", "Email",
-                "Phone", "Specialty", "Hired", "Status"]
+        cols = ["ID", "Full Name", "Email", "Phone", "Specialty", "Hired", "Status"]
         self.ttree, tf = make_table(f, cols, 16)
         tf.pack(fill="both", expand=True)
         self._load_trainers()
 
     def _load_trainers(self):
-        """Clears and reloads the trainers table from the database."""
-        for r in self.ttree.get_children():
-            self.ttree.delete(r)
+        """Refreshes structural tree items array representing active trainer accounts."""
+        for r in self.ttree.get_children(): self.ttree.delete(r)
         for t in self.user.get_all_trainers():
-            self.ttree.insert("", "end", values=(
-                t["id"], t["full_name"], t["email"] or "",
-                t["phone"] or "", t["specialty"] or "",
-                t["hire_date"] or "", t["status"]))
+            self.ttree.insert("", "end", values=(t["id"], t["full_name"], t["email"] or "", t["phone"] or "", t["specialty"] or "", t["hire_date"] or "", t["status"]))
 
     def _add_trainer_form(self):
-        """Opens a popup form to add a new trainer record."""
-        win = popup(self.root, "Add Trainer", 420, 460)
-        popup_header(win, "Add New Trainer")
-
-        fn = form_row(win, "Full Name")
-        em = form_row(win, "Email")
-        ph = form_row(win, "Phone")
-        sp = form_row(win, "Specialty")
+        """Launches creation dialog fields for a trainer context."""
+        win = popup(self.root, "Add Trainer", 420, 460); popup_header(win, "Add New Trainer")
+        fn, em, ph, sp = form_row(win, "Full Name"), form_row(win, "Email"), form_row(win, "Phone"), form_row(win, "Specialty")
 
         def save():
-            if not fn.var.get().strip():
-                messagebox.showerror(
-                    "Error", "Name required.", parent=win)
-                return
-            self.user.add_trainer(
-                fn.var.get().strip(), em.var.get().strip(),
-                ph.var.get().strip(), sp.var.get().strip())
-            messagebox.showinfo("Success", "Trainer added!", parent=win)
-            win.destroy()
-            self._load_trainers()
+            if not fn.var.get().strip(): messagebox.showerror("Error", "Name required.", parent=win); return
+            self.user.add_trainer(fn.var.get().strip(), em.var.get().strip(), ph.var.get().strip(), sp.var.get().strip())
+            messagebox.showinfo("Success", "Trainer added!", parent=win); win.destroy(); self._load_trainers()
 
         btn(win, "Save Trainer", save).pack(fill="x", padx=22, pady=8)
-        btn(win, "Cancel", win.destroy,
-            bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
+        btn(win, "Cancel", win.destroy, bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
 
     def _delete_trainer(self):
-        """Deletes the selected trainer after confirmation."""
+        """Drops target trainer identifier context cleanly after security warning."""
         vals = self._selected(self.ttree)
-        if not vals:
-            messagebox.showwarning("Warning", "Select a trainer.")
-            return
-
+        if not vals: messagebox.showwarning("Warning", "Select a trainer."); return
         if messagebox.askyesno("Delete", f"Delete '{vals[1]}'?"):
-            conn = self.user._db.get_connection()
-            conn.cursor().execute(
-                "DELETE FROM trainers WHERE id=?", (vals[0],))
-            conn.commit()
-            conn.close()
+            conn = self.user._db.get_connection(); conn.cursor().execute("DELETE FROM trainers WHERE id=?", (vals[0],)); conn.commit(); conn.close()
             self._load_trainers()
 
     # ── Plans section ─────────────────────────────────────────
-
     def show_plans(self):
-        """Displays the membership plans management screen."""
-        self._clear()
-        self._set_nav("Plans")
+        """Displays systemic tracking metrics mapping membership option plans."""
+        self._clear(); self._set_nav("Plans"); f = self._frame()
+        header(f, "Membership Plans", "Create and manage subscription plans").pack(fill="x", pady=(0, 14))
+        top = tk.Frame(f, bg=BG_COLOR)
+        top.pack(fill="x", pady=(0, 10))
+        btn(top, "Add Plan", self._add_plan_form).pack(side="left", padx=3)
+        btn(top, "Delete Plan", self._delete_plan, bg="#c0392b").pack(side="left", padx=3)
+
+        cols = ["ID", "Plan Name", "Months", "Price (KES)", "Description"]
+        self.ptree, tf = make_table(f, cols, 14)
+        tf.pack(fill="both", expand=True); self.ptree.column("Description", width=280)
+        self._load_plans()
+
+    def _load_plans(self):
+        """Pulls internal gym catalog items configuration parameters directly."""
+        for r in self.ptree.get_children(): self.ptree.delete(r)
+        for p in self.user.get_all_plans(): self.ptree.insert("", "end", values=(p["id"], p["plan_name"], p["duration_months"], f"{p['price']:,.0f}", p["description"] or ""))
+
+    def _add_plan_form(self):
+        """Launches creation modal context mapping gym billing configurations."""
+        win = popup(self.root, "Add Plan", 420, 440); popup_header(win, "Add Membership Plan")
+        nm, dr, pr, ds = form_row(win, "Plan Name"), form_row(win, "Duration (months)"), form_row(win, "Price (KES)"), form_row(win, "Description")
+
+        def save():
+            raw_name, raw_duration, raw_price = nm.var.get().strip(), dr.var.get().strip(), pr.var.get().strip()
+            if not all([raw_name, raw_duration, raw_price]): messagebox.showerror("Error", "All fields required.", parent=win); return
+            try:
+                # CRASH PREVENTION: Sanitize dynamic numeric entry data
+                clean_price = raw_price.replace(',', '').replace('KES', '').strip()
+                clean_duration = raw_duration.replace(',', '').strip()
+                final_price, final_duration = float(clean_price), int(clean_duration)
+
+                conn = self.user._db.get_connection()
+                conn.cursor().execute("INSERT INTO membership_plans (plan_name, duration_months, price, description) VALUES (?, ?, ?, ?)", (raw_name, final_duration, final_price, ds.var.get().strip()))
+                conn.commit(); conn.close()
+                messagebox.showinfo("Success", "Plan added!", parent=win); win.destroy(); self._load_plans()
+            except ValueError: messagebox.showerror("Error", "Please enter valid numeric values for price and duration.", parent=win)
+            except Exception as ex: messagebox.showerror("Error", str(ex), parent=win)
+
+        btn(win, "Save Plan", save).pack(fill="x", padx=22, pady=8)
+        btn(win, "Cancel", win.destroy, bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
+
+    def _delete_plan(self):
+        """Drops target subscription plan mapping safely from database records."""
+        vals = self._selected(self.ptree)
+        if not vals: messagebox.showwarning("Warning", "Select a plan."); return
+        if messagebox.askyesno("Delete", f"Delete plan '{vals[1]}'?"):
+            conn = self.user._db.get_connection(); conn.cursor().execute("DELETE FROM membership_plans WHERE id=?", (vals[0],)); conn.commit(); conn.close()
+            self._load_plans()
+
+    # ── Payments section ──────────────────────────────────────
+    def show_payments(self):
+        """Displays transactional system metrics log grid array."""
+        self._clear(); self._set_nav("Payments"); f = self._frame()
+        header(f, "Payments", "Record and track member payments").pack(fill="x", pady=(0, 14))
+        btn(f, "Record Payment", self._add_payment_form).pack(anchor="w", pady=(0, 10))
+
+        cols = ["ID", "Member", "Amount (KES)", "Plan", "Date", "Method", "Status"]
+        self.paytree, tf = make_table(f, cols, 16)
+        tf.pack(fill="both", expand=True)
+        self._load_payments()
+
+    def _load_payments(self):
+        """Pulls comprehensive ledger log arrays matching transactional records."""
+        for r in self.paytree.get_children(): self.paytree.delete(r)
+        for p in self.user.get_all_payments(): self.paytree.insert("", "end", values=(p["id"], p["full_name"], f"{p['amount']:,.0f}", p["plan_name"] or "", p["payment_date"], p["payment_method"], p["status"]))
+
+    def _add_payment_form(self):
+        """Captures fresh structural ledger objects from interface entry workflows."""
+        win = popup(self.root, "Record Payment", 420, 500); popup_header(win, "Record Payment")
+        members = self.user.get_all_members(); mmap = {m["full_name"]: m["member_id"] for m in members}
+
+        lbl(win, "Member", 9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
+        mcb, mvar = dropdown(win, list(mmap.keys())); mcb.pack(fill="x", padx=22, ipady=6, pady=(2, 10))
+        am = form_row(win, "Amount (KES)")
+
+        lbl(win, "Plan", 9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
+        pcb, pvar = dropdown(win, [p["plan_name"] for p in self.user.get_all_plans()]); pcb.pack(fill="x", padx=22, ipady=6, pady=(2, 10))
+
+        lbl(win, "Payment Method", 9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
+        xcb, xvar = dropdown(win, ["Cash", "M-Pesa", "Card", "Bank Transfer"]); xcb.pack(fill="x", padx=22, ipady=6, pady=(2, 14))
+
+        def save():
+            raw_amount = am.var.get().strip()
+            if not mvar.get() or not raw_amount: messagebox.showerror("Error", "Member and amount required.", parent=win); return
+            try:
+                # FIXED CRASH VALUEERROR: Clean commas, currency signs, and whitespace safely
+                clean_amount = raw_amount.replace(',', '').replace('KES', '').strip()
+                final_amount = float(clean_amount)
+                self.user.add_payment(mmap[mvar.get()], final_amount, pvar.get(), xvar.get())
+                messagebox.showinfo("Success", "Payment recorded!", parent=win); win.destroy(); self._load_payments()
+            except ValueError: messagebox.showerror("Invalid Amount", f"Could not read processing amount: '{raw_amount}'\nPlease avoid trailing alphabetical symbols.", parent=win)
+
+        btn(win, "Save Payment", save).pack(fill="x", padx=22, pady=6)
+        btn(win, "Cancel", win.destroy, bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
+
+    # ── Attendance section ────────────────────────────────────
+    def show_attendance(self):
+        """Displays read-only list logs detailing user physical presence operations."""
+        self._clear(); self._set_nav("Attendance"); f = self._frame()
+        header(f, "Attendance Records", "All member check-ins").pack(fill="x", pady=(0, 14))
+        cols = ["ID", "Member", "Check-In", "Check-Out"]
+        tree, tf = make_table(f, cols, 18); tf.pack(fill="both", expand=True)
+        for rec in self.user.get_all_attendance(): tree.insert("", "end", values=(rec["id"], rec["full_name"], rec["check_in"], rec["check_out"] or "Still In"))
+
+    # ── Workouts section ──────────────────────────────────────
+    def show_workouts(self):
+        """Handles routine physical task logging procedures across subscriber profiles."""
+        self._clear(); self._set_nav("Workouts"); f = self._frame()
+        header(f, "Workout Plans", "Assign workout plans to members").pack(fill="x", pady=(0, 14))
+        btn(f, "Assign Plan", self._assign_workout_form).pack(anchor="w", pady=(0, 10))
+
+        cols = ["ID", "Member", "Plan Name", "Exercises", "Date"]
+        self.wtree, tf = make_table(f, cols, 16)
+        tf.pack(fill="both", expand=True); self.wtree.column("Exercises", width=280)
+        self._load_workouts()
+
+    def _load_workouts(self):
+        """Pulls routines setup maps configurations down out of internal active engine tracks."""
+        for r in self.wtree.get_children(): self.wtree.delete(r)
+        conn = self.user._db.get_connection(); cur = conn.cursor()
+        cur.execute("SELECT w.id, u.full_name, w.plan_name, w.exercises, w.created_at FROM workout_plans w JOIN members m ON w.member_id = m.id JOIN users u ON m.user_id = u.id ORDER BY w.created_at DESC")
+        for r in cur.fetchall(): self.wtree.insert("", "end", values=(r["id"], r["full_name"], r["plan_name"], r["exercises"] or "", r["created_at"]))
+        conn.close()
+
+    def _assign_workout_form(self):
+        """Launches target popup layout mapping exercise specifications."""
+        win = popup(self.root, "Assign Workout", 460, 420); popup_header(win, "Assign Workout Plan")
+        members = self.user.get_all_members(); mmap = {m["full_name"]: m["member_id"] for m in members}
+
+        lbl(win, "Select Member", 9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
+        mcb, mvar = dropdown(win, list(mmap.keys())); mcb.pack(fill="x", padx=22, ipady=6, pady=(2, 10))
+        pn = form_row(win, "Plan Name")
+
+        lbl(win, "Exercises", 9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
+        ex = tk.Text(win, height=6, font=("Arial", 11), bg=INPUT_BG, fg=TEXT_COLOR, insertbackground=TEXT_COLOR, relief="flat")
+        ex.pack(fill="x", padx=22, pady=(4, 14))
+
+        def save():
+            if not mvar.get() or not pn.var.get().strip(): messagebox.showerror("Error", "Member and plan name required.", parent=win); return
+            conn = self.user._db.get_connection()
+            conn.cursor().execute("INSERT INTO workout_plans (member_id, plan_name, exercises, assigned_by) VALUES (?, ?, ?, ?)", (mmap[mvar.get()], pn.var.get().strip(), ex.get("1.0", "end").strip(), self.user.user_id))
+            conn.commit(); conn.close()
+            messagebox.showinfo("Success", "Workout assigned successfully!", parent=win); win.destroy(); self._load_workouts()
+
+        btn(win, "Assign Plan", save).pack(fill="x", padx=22, pady=6)
+        btn(win, "Cancel", win.destroy, bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
+
+    # ── Analytics & Logout definitions ────────────────────────
+    def show_analytics(self):
+        """Displays data summary metrics grouped dynamically via analytical table frameworks."""
+        self._clear(); self._set_nav("Analytics"); f = self._frame()
+        header(f, "Analytics")
         f = self._frame()
 
         header(f, "Membership Plans",
@@ -975,13 +824,8 @@ class AdminDashboard:
         provided by LoginScreen. This destroys the dashboard
         and shows the login screen again — without
         touching the root window.
-       """
+        """
         if messagebox.askyesno("Logout", "Are you sure?"):
          if self.logout_callback:
             self.logout_callback()
             
-            
-            
-            
-
-
