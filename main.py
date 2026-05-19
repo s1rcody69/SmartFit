@@ -6,13 +6,18 @@ from gui.login_screen import LoginScreen
 def main():
     print("Starting SmartFit Gym System...")
 
-    # Initialize database
+    # Initialise database and seed default data
     db = DatabaseManager()
     db.seed_default_data()
 
-    # Launch login window
+    # Create ONE root window that lives forever
     root = tk.Tk()
+
+    # Start the login screen
     LoginScreen(root)
+
+    # Hand control to Tkinter — this never returns until
+    # the user closes the last window
     root.mainloop()
 
 
