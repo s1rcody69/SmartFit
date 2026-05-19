@@ -52,6 +52,7 @@ class AdminDashboard:
         """
         self.root = root
         self.user = user
+        self.logout_callback = None
 
         self.root.title("SmartFit  -  Admin Dashboard")
         self.root.geometry("1200x720")
@@ -262,7 +263,7 @@ class AdminDashboard:
 
         # Action buttons
         for text, cmd, bg in [
-            ("Add Member",    self._add_member_form,  BTN_COLOR),
+            ("Add Member",    self._add_member_form,  BG_COLOR),
             ("Edit Member",   self._edit_member_form, CARD_COLOR),
             ("Delete Member", self._delete_member,    "#c0392b"),
             ("Check-In",      self._record_checkin,   "#27ae60"),
@@ -318,16 +319,10 @@ class AdminDashboard:
     def _add_member_form(self):
         """
         Opens a popup form to create a new member account.
-        Creates both a users row (login credentials) and a
-        members row (profile + membership details).
-        The membership end date is auto-calculated from the
-        selected plan's duration.
         """
-        # FIX: increased height from original to show Save/Cancel buttons
         win = popup(self.root, "Add Member", 450, 640)
         popup_header(win, "Add New Member")
 
-        # Build all input fields in one loop
         fields = {}
         for k, lb, sh in [
             ("full_name", "Full Name", ""),
@@ -338,14 +333,12 @@ class AdminDashboard:
         ]:
             fields[k] = form_row(win, lb, show=sh)
 
-        # Plan dropdown populated from the database
         plans = self.user.get_all_plans()
         lbl(win, "Membership Plan", 9,
             color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
         pcb, pvar = dropdown(win, [p["plan_name"] for p in plans])
         pcb.pack(fill="x", padx=22, ipady=6, pady=(2, 10))
 
-        # Start date field (defaults to today)
         lbl(win, "Start Date (YYYY-MM-DD)", 9,
             color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
         svar = tk.StringVar(value=str(date.today()))
@@ -356,7 +349,6 @@ class AdminDashboard:
         ).pack(fill="x", padx=22, ipady=7, pady=(2, 14))
 
         def save():
-            """Validates form and saves the new member to the database."""
             d = {k: e.var.get().strip() for k, e in fields.items()}
 
             if not all([d["full_name"], d["username"], d["password"]]):
@@ -366,7 +358,6 @@ class AdminDashboard:
                     parent=win)
                 return
 
-            # Auto-calculate end date from plan duration
             sel_plan = next(
                 (p for p in plans if p["plan_name"] == pvar.get()),
                 None)
@@ -397,15 +388,12 @@ class AdminDashboard:
     def _edit_member_form(self):
         """
         Opens a popup pre-filled with the selected member's data.
-        Allows editing name, email, phone, plan and status.
-        Updates both the users and members tables on save.
         """
         vals = self._selected(self.mtree)
         if not vals:
             messagebox.showwarning("Warning", "Select a member first.")
             return
 
-        # Unpack selected row values
         uid, name, _, email, phone, plan, status = (
             vals[0], vals[1], vals[2],
             vals[3], vals[4], vals[5], vals[6])
@@ -413,7 +401,6 @@ class AdminDashboard:
         win = popup(self.root, "Edit Member", 440, 460)
         popup_header(win, "Edit Member")
 
-        # Pre-fill fields with existing data
         fn = form_row(win, "Full Name", value=name)
         em = form_row(win, "Email",     value=email)
         ph = form_row(win, "Phone",     value=phone)
@@ -432,7 +419,6 @@ class AdminDashboard:
         scb.pack(fill="x", padx=22, ipady=6, pady=(2, 14))
 
         def save():
-            """Validates and saves edits to the database."""
             if not fn.var.get().strip():
                 messagebox.showerror(
                     "Error", "Name required.", parent=win)
@@ -441,14 +427,12 @@ class AdminDashboard:
             conn = self.user._db.get_connection()
             cur  = conn.cursor()
 
-            # Update user account details
             cur.execute(
                 "UPDATE users SET full_name=?, email=?, phone=?"
                 " WHERE id=?",
                 (fn.var.get().strip(), em.var.get().strip(),
                  ph.var.get().strip(), uid))
 
-            # Update membership plan and status
             cur.execute(
                 "UPDATE members SET membership_plan=?, status=?"
                 " WHERE user_id=?",
@@ -466,10 +450,7 @@ class AdminDashboard:
             bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
 
     def _delete_member(self):
-        """
-        Deletes the selected member after confirmation.
-        Removes both the users row and the members row.
-        """
+        """Deletes the selected member after confirmation."""
         vals = self._selected(self.mtree)
         if not vals:
             messagebox.showwarning("Warning", "Select a member first.")
@@ -482,11 +463,7 @@ class AdminDashboard:
             self._load_members()
 
     def _record_checkin(self):
-        """
-        Records a gym check-in for the selected member.
-        Inserts a row into the attendance table with the
-        current timestamp.
-        """
+        """Records a gym check-in for the selected member."""
         vals = self._selected(self.mtree)
         if not vals:
             messagebox.showwarning("Warning", "Select a member first.")
@@ -495,7 +472,6 @@ class AdminDashboard:
         conn = self.user._db.get_connection()
         cur  = conn.cursor()
 
-        # Look up the member_id from the user_id
         cur.execute(
             "SELECT id FROM members WHERE user_id=?", (vals[0],))
         row = cur.fetchone()
@@ -513,10 +489,7 @@ class AdminDashboard:
     # ── Trainers section ──────────────────────────────────────
 
     def show_trainers(self):
-        """
-        Displays the trainer management screen with a table
-        of all trainers and Add / Delete action buttons.
-        """
+        """Displays the trainer management screen."""
         self._clear()
         self._set_nav("Trainers")
         f = self._frame()
@@ -549,7 +522,6 @@ class AdminDashboard:
 
     def _add_trainer_form(self):
         """Opens a popup form to add a new trainer record."""
-        # FIX: increased height from 360 to 460 to show Save/Cancel buttons
         win = popup(self.root, "Add Trainer", 420, 460)
         popup_header(win, "Add New Trainer")
 
@@ -628,7 +600,6 @@ class AdminDashboard:
 
     def _add_plan_form(self):
         """Opens a popup form to add a new membership plan."""
-        # FIX: increased height from 340 to 440 to show Save/Cancel buttons
         win = popup(self.root, "Add Plan", 420, 440)
         popup_header(win, "Add Membership Plan")
 
@@ -638,26 +609,37 @@ class AdminDashboard:
         ds = form_row(win, "Description")
 
         def save():
-            if not all([nm.var.get().strip(),
-                        dr.var.get().strip(),
-                        pr.var.get().strip()]):
+            raw_name = nm.var.get().strip()
+            raw_duration = dr.var.get().strip()
+            raw_price = pr.var.get().strip()
+
+            if not all([raw_name, raw_duration, raw_price]):
                 messagebox.showerror(
                     "Error", "All fields required.", parent=win)
                 return
             try:
+                # CRASH PREVENTION: Sanitize dynamic numeric entry data
+                clean_price = raw_price.replace(',', '').replace('KES', '').strip()
+                clean_duration = raw_duration.replace(',', '').strip()
+
+                final_price = float(clean_price)
+                final_duration = int(clean_duration)
+
                 conn = self.user._db.get_connection()
                 conn.cursor().execute(
                     "INSERT INTO membership_plans"
                     " (plan_name, duration_months, price, description)"
                     " VALUES (?, ?, ?, ?)",
-                    (nm.var.get().strip(), int(dr.var.get()),
-                     float(pr.var.get()), ds.var.get().strip()))
+                    (raw_name, final_duration, final_price, ds.var.get().strip()))
                 conn.commit()
                 conn.close()
                 messagebox.showinfo(
                     "Success", "Plan added!", parent=win)
                 win.destroy()
                 self._load_plans()
+            except ValueError:
+                messagebox.showerror(
+                    "Error", "Please enter valid numeric values for price and duration.", parent=win)
             except Exception as ex:
                 messagebox.showerror("Error", str(ex), parent=win)
 
@@ -715,17 +697,11 @@ class AdminDashboard:
                 p["status"]))
 
     def _add_payment_form(self):
-        """
-        Opens a popup to record a new payment.
-        Lets admin select member, enter amount,
-        choose plan and payment method.
-        """
-        # FIX: increased height from 380 to 500 to show Save/Cancel buttons
+        """Opens a popup to record a new payment."""
         win = popup(self.root, "Record Payment", 420, 500)
         popup_header(win, "Record Payment")
 
         members = self.user.get_all_members()
-        # Map full name -> member_id for easy lookup on save
         mmap = {m["full_name"]: m["member_id"] for m in members}
 
         lbl(win, "Member", 9,
@@ -748,17 +724,32 @@ class AdminDashboard:
         xcb.pack(fill="x", padx=22, ipady=6, pady=(2, 14))
 
         def save():
-            if not mvar.get() or not am.var.get().strip():
+            raw_amount = am.var.get().strip()
+            if not mvar.get() or not raw_amount:
                 messagebox.showerror(
                     "Error", "Member and amount required.", parent=win)
                 return
-            self.user.add_payment(
-                mmap[mvar.get()], float(am.var.get()),
-                pvar.get(), xvar.get())
-            messagebox.showinfo(
-                "Success", "Payment recorded!", parent=win)
-            win.destroy()
-            self._load_payments()
+            
+            try:
+                # FIXED CRASH VALUEERROR: Clean commas, currency signs, and whitespace safely
+                clean_amount = raw_amount.replace(',', '').replace('KES', '').strip()
+                final_amount = float(clean_amount)
+                
+                self.user.add_payment(
+                    mmap[mvar.get()], final_amount,
+                    pvar.get(), xvar.get())
+                messagebox.showinfo(
+                    "Success", "Payment recorded!", parent=win)
+                win.destroy()
+                self._load_payments()
+                
+            except ValueError:
+                messagebox.showerror(
+                    "Invalid Amount", 
+                    f"Could not read processing amount: '{raw_amount}'\n"
+                    "Please avoid trailing alphabetical symbols.", 
+                    parent=win
+                )
 
         btn(win, "Save Payment", save).pack(fill="x", padx=22, pady=6)
         btn(win, "Cancel", win.destroy,
@@ -767,10 +758,7 @@ class AdminDashboard:
     # ── Attendance section ────────────────────────────────────
 
     def show_attendance(self):
-        """
-        Displays a read-only table of all member check-ins,
-        ordered most recent first.
-        """
+        """Displays a read-only table of all member check-ins."""
         self._clear()
         self._set_nav("Attendance")
         f = self._frame()
@@ -791,10 +779,7 @@ class AdminDashboard:
     # ── Workouts section ──────────────────────────────────────
 
     def show_workouts(self):
-        """
-        Displays assigned workout plans with an option
-        to assign a new plan to any member.
-        """
+        """Displays assigned workout plans with option to assign new."""
         self._clear()
         self._set_nav("Workouts")
         f = self._frame()
@@ -813,10 +798,7 @@ class AdminDashboard:
         self._load_workouts()
 
     def _load_workouts(self):
-        """
-        Loads all workout plans from the database using a
-        JOIN across workout_plans, members, and users tables.
-        """
+        """Loads all workout plans from the database."""
         for r in self.wtree.get_children():
             self.wtree.delete(r)
 
@@ -837,11 +819,7 @@ class AdminDashboard:
         conn.close()
 
     def _assign_workout_form(self):
-        """
-        Opens a popup to assign a workout plan to a member.
-        Admin selects a member, enters a plan name, and
-        describes the exercises in a multi-line text area.
-        """
+        """Opens a popup to assign a workout plan to a member."""
         win = popup(self.root, "Assign Workout", 460, 420)
         popup_header(win, "Assign Workout Plan")
 
@@ -857,7 +835,7 @@ class AdminDashboard:
 
         lbl(win, "Exercises", 9,
             color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w", padx=22)
-        # Multi-line text area for exercise description
+        
         ex = tk.Text(
             win, height=6, font=("Arial", 11),
             bg=INPUT_BG, fg=TEXT_COLOR,
@@ -880,18 +858,14 @@ class AdminDashboard:
                  self.user.user_id))
             conn.commit()
             conn.close()
-            messagebox.showinfo(
-                "Success", "Workout assigned!", parent=win)
+            messagebox.showinfo("Success", "Workout assigned successfully!", parent=win)
             win.destroy()
             self._load_workouts()
 
-        btn(win, "Assign Plan", save).pack(
-            fill="x", padx=22, pady=4)
-        btn(win, "Cancel", win.destroy,
-            bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
+        btn(win, "Assign Plan", save).pack(fill="x", padx=22, pady=6)
+        btn(win, "Cancel", win.destroy, bg=CARD_COLOR, fg=TEXT_COLOR).pack(fill="x", padx=22)
 
-    # ── Analytics section ─────────────────────────────────────
-
+    # ── Analytics & Logout definitions ────────────────────────
     def show_analytics(self):
         """
         Displays a summary analytics screen with:
@@ -991,18 +965,23 @@ class AdminDashboard:
 
         conn.close()
 
-    # ── Logout ────────────────────────────────────────────────
+
+   
+
 
     def logout(self):
         """
-        Asks for confirmation, then destroys the dashboard window
-        and relaunches a fresh login screen.
-        """
+        Asks for confirmation then calls the logout_callback
+        provided by LoginScreen. This destroys the dashboard
+        and shows the login screen again — without
+        touching the root window.
+       """
         if messagebox.askyesno("Logout", "Are you sure?"):
-            self.root.destroy()
-            import tkinter as tk
-            from gui.login_screen import LoginScreen
-            r = tk.Tk()
-            LoginScreen(r)
-            r.mainloop()
-# 
+         if self.logout_callback:
+            self.logout_callback()
+            
+            
+            
+            
+
+
