@@ -31,6 +31,7 @@ class MemberDashboard:
         """
         self.root    = root
         self.user    = user
+        self.logout_callback = None
         # self.chatbot = Chatbot()   # FitBot assistant instance
 
         self.root.title("SmartFit  -  Member Dashboard")
@@ -128,6 +129,29 @@ class MemberDashboard:
         for k, b in self.nav_btns.items():
             b.set_active() if k == name else b.set_inactive()
 
+    def _rebuild_sidebar(self):
+        """
+        Destroys and rebuilds the sidebar so the status badge
+        reflects the latest value from self.user after a profile
+        change (e.g. membership cancellation or reactivation).
+        Nav button highlight is restored for the current section.
+        """
+        # Remember which nav button is currently active
+        active = next(
+            (k for k, b in self.nav_btns.items()
+             if b.cget("bg") == ACCENT_COLOR),
+            None)
+
+        # Destroy all sidebar widgets and rebuild from scratch
+        for w in self.sidebar.winfo_children():
+            w.destroy()
+
+        self._build_sidebar()
+
+        # Restore the active highlight
+        if active and active in self.nav_btns:
+            self.nav_btns[active].set_active()
+
     def _clear(self):
         """Clears all widgets from the content area."""
         for w in self.content.winfo_children():
@@ -162,16 +186,24 @@ class MemberDashboard:
         row = tk.Frame(f, bg=BG_COLOR)
         row.pack(fill="x", pady=(0, 16))
 
+        # When inactive, hide plan and expiry so the home screen
+        # is not misleading — member should contact admin to reactivate
+        _status  = getattr(self.user, "status", "Active")
+        _plan    = (getattr(self.user, "membership_plan", "None")
+                    if _status == "Active" else "None")
+        _expires = (getattr(self.user, "membership_end", "N/A") or "N/A"
+                    if _status == "Active" else "N/A")
+
         for i, (title, val, color) in enumerate([
             ("My Plan",
-             getattr(self.user, "membership_plan", "Basic"),
-             WARNING_COLOR),
+             _plan,
+             WARNING_COLOR if _status == "Active" else SUBTEXT_COLOR),
             ("Status",
-             getattr(self.user, "status", "Active"),
-             SUCCESS_COLOR),
+             _status,
+             SUCCESS_COLOR if _status == "Active" else ACCENT_COLOR),
             ("Expires",
-             getattr(self.user, "membership_end", "N/A") or "N/A",
-             "#9b59b6"),
+             _expires,
+             "#9b59b6" if _status == "Active" else SUBTEXT_COLOR),
         ]):
             c = card(row)
             c.grid(row=0, column=i, padx=8, sticky="ew")
@@ -228,6 +260,7 @@ class MemberDashboard:
           - Editable name, email, phone fields
           - Optional password change fields
           - Save button that writes changes to the database
+          - Delete Account button at the bottom
         """
         self._clear()
         self._set_nav("My Profile")
@@ -281,8 +314,15 @@ class MemberDashboard:
         self._pw  = form_row(pr, "New Password",     show="*")
         self._pw2 = form_row(pr, "Confirm Password", show="*")
 
-        btn(c, "Save Changes",
-            self._save_profile).pack(anchor="w", pady=(14, 0))
+        # Save and Delete Account buttons side by side
+        btn_row = tk.Frame(c, bg=CARD_COLOR)
+        btn_row.pack(anchor="w", pady=(14, 0))
+
+        btn(btn_row, "Save Changes",
+            self._save_profile).pack(side="left", padx=(0, 10))
+
+        btn(btn_row, "Delete Account",
+            self._delete_account, bg="#c0392b").pack(side="left")
 
     def _save_profile(self):
         """
@@ -314,58 +354,196 @@ class MemberDashboard:
 
         messagebox.showinfo("Saved", "Profile updated.")
 
+    def _delete_account(self):
+        """
+        Asks for confirmation twice before permanently deleting
+        the member's account, all attendance records, progress
+        entries, and workout plans from the database.
+        After deletion the dashboard closes and the login
+        screen is relaunched.
+        """
+        if not messagebox.askyesno(
+                "Delete Account",
+                "Are you sure you want to delete your account?\n"
+                "This will permanently remove all your data."):
+            return
+
+        if not messagebox.askyesno(
+                "Final Confirmation",
+                "This cannot be undone.\n"
+                "Are you absolutely sure?"):
+            return
+
+        conn   = self.user._db.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "DELETE FROM attendance WHERE member_id=?",
+            (self.user.member_id,))
+        cursor.execute(
+            "DELETE FROM fitness_progress WHERE member_id=?",
+            (self.user.member_id,))
+        cursor.execute(
+            "DELETE FROM workout_plans WHERE member_id=?",
+            (self.user.member_id,))
+        cursor.execute(
+            "DELETE FROM payments WHERE member_id=?",
+            (self.user.member_id,))
+        cursor.execute(
+            "DELETE FROM members WHERE id=?",
+            (self.user.member_id,))
+        cursor.execute(
+            "DELETE FROM users WHERE id=?",
+            (self.user.user_id,))
+
+        conn.commit()
+        conn.close()
+
+        messagebox.showinfo(
+            "Account Deleted",
+            "Your account has been deleted.")
+
+        self.root.destroy()
+        import tkinter as tk2
+        from gui.login_screen import LoginScreen
+        r = tk2.Tk()
+        LoginScreen(r)
+        r.mainloop()
+
     # ── Membership section ────────────────────────────────────
 
     def show_membership(self):
         """
-        Shows the member's current membership details:
-          - Plan name (highlighted badge)
-          - Status, start date, expiry date
-          - Days remaining (colour-coded: green/orange/red)
-          - Upgrade instructions
+        Shows the member's current membership details and allows:
+          - Viewing current plan, status, start date, expiry
+          - Selecting and upgrading to a different plan
+          - Cancelling membership (sets status to Inactive)
+
+        FIX: content is placed inside a scrollable canvas so the
+        Upgrade and Cancel buttons are always reachable regardless
+        of window height.
         """
         self._clear()
         self._set_nav("Membership")
-        f = self._frame()
+
+        # ── Scrollable container ──────────────────────────────
+        # Outer frame fills the content area
+        outer = tk.Frame(self.content, bg=BG_COLOR)
+        outer.pack(fill="both", expand=True)
+
+        # Canvas + vertical scrollbar
+        canvas = tk.Canvas(outer, bg=BG_COLOR, highlightthickness=0)
+        scrollbar = tk.Scrollbar(
+            outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        # Inner frame that holds all actual content
+        inner = tk.Frame(canvas, bg=BG_COLOR, padx=24, pady=20)
+        canvas_window = canvas.create_window(
+            (0, 0), window=inner, anchor="nw")
+
+        # Make the inner frame stretch to canvas width
+        def _on_canvas_resize(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+
+        canvas.bind("<Configure>", _on_canvas_resize)
+
+        # Update scroll region whenever inner frame changes size
+        def _on_frame_resize(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        inner.bind("<Configure>", _on_frame_resize)
+
+        # Allow mouse-wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        # Linux scroll support
+        canvas.bind_all("<Button-4>",
+                        lambda e: canvas.yview_scroll(-1, "units"))
+        canvas.bind_all("<Button-5>",
+                        lambda e: canvas.yview_scroll(1, "units"))
+
+        # f is the inner frame — all content packs into this
+        f = inner
 
         header(f, "My Membership",
                "Current plan and membership details").pack(
             fill="x", pady=(0, 18))
 
-        c = card(f, padx=28, pady=22)
-        c.pack(fill="x")
-
+        # Read current values from the member model
         plan   = getattr(self.user, "membership_plan",  "Basic")
         start  = getattr(self.user, "membership_start", "N/A")
         end    = getattr(self.user, "membership_end",   "N/A")
         status = getattr(self.user, "status",           "Active")
 
-        # Plan badge
-        badge = tk.Frame(c, bg=ACCENT_COLOR, padx=14, pady=8)
-        badge.pack(anchor="w", pady=(0, 14))
-        lbl(badge, f"{plan} Plan", 13,
+        # -- Inactive gate: show contact message and stop here --
+        if status == "Inactive":
+            inactive_card = card(f, padx=24, pady=28)
+            inactive_card.pack(fill="x", pady=(0, 16))
+
+            icon_row = tk.Frame(inactive_card, bg=CARD_COLOR)
+            icon_row.pack(anchor="w", pady=(0, 10))
+            lbl(icon_row, "X", 22, bold=True,
+                color=ACCENT_COLOR, bg=CARD_COLOR).pack(side="left")
+            lbl(icon_row, "  Membership Inactive", 15, bold=True,
+                color=ACCENT_COLOR, bg=CARD_COLOR).pack(side="left")
+
+            tk.Frame(inactive_card, bg=INPUT_BG, height=1).pack(
+                fill="x", pady=(4, 14))
+
+            lbl(inactive_card,
+                "Your membership has been cancelled and is currently inactive. "
+                "You do not have an active plan at this time.",
+                11, color=TEXT_COLOR, bg=CARD_COLOR,
+                wraplength=600).pack(anchor="w")
+
+            lbl(inactive_card,
+                "To reactivate your membership, please contact the front desk "
+                "or visit the gym reception. An admin will restore your access.",
+                10, color=SUBTEXT_COLOR, bg=CARD_COLOR,
+                wraplength=600).pack(anchor="w", pady=(10, 0))
+
+            # Stop here: do not show plan details or upgrade/cancel cards
+            return
+
+        # -- Current plan summary card (Active members only) --
+        current = card(f, padx=24, pady=18)
+        current.pack(fill="x", pady=(0, 16))
+
+        lbl(current, "Current Plan", 10,
+            color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w")
+
+        badge = tk.Frame(current, bg=ACCENT_COLOR, padx=14, pady=6)
+        badge.pack(anchor="w", pady=(4, 12))
+        lbl(badge, f"{plan} Plan", 14,
             bold=True, bg=ACCENT_COLOR, color="white").pack()
 
-        # Detail rows
-        for label, val in [
-            ("Status",     status),
-            ("Start Date", start),
-            ("Expiry",     end or "N/A"),
-        ]:
-            row = tk.Frame(c, bg=CARD_COLOR)
-            row.pack(fill="x", pady=3)
-            lbl(row, f"{label}:", 10, bold=True,
-                color=SUBTEXT_COLOR, bg=CARD_COLOR,
-                width=12, anchor="w").pack(side="left")
-            lbl(row, val or "N/A", 10,
-                bg=CARD_COLOR).pack(side="left")
+        details = tk.Frame(current, bg=CARD_COLOR)
+        details.pack(fill="x")
 
-        # Days remaining countdown — colour-coded
+        for i, (label, val) in enumerate([
+            ("Status",     status),
+            ("Start Date", start  or "N/A"),
+            ("Expiry",     end    or "N/A"),
+        ]):
+            col = tk.Frame(details, bg=CARD_COLOR)
+            col.grid(row=0, column=i, padx=(0, 24))
+            details.columnconfigure(i, weight=0)
+            lbl(col, label, 9,
+                color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w")
+            lbl(col, val, 11, bold=True,
+                bg=CARD_COLOR).pack(anchor="w")
+
         if end and end != "N/A":
             try:
                 days  = (date.fromisoformat(end) - date.today()).days
                 color = (
-                    "#2ecc71"    if days > 7
+                    "#2ecc71"      if days > 7
                     else WARNING_COLOR if days >= 0
                     else ACCENT_COLOR
                 )
@@ -374,17 +552,163 @@ class MemberDashboard:
                     if days < 0
                     else f"{days} days remaining"
                 )
-                tk.Frame(c, bg=INPUT_BG, height=1).pack(
-                    fill="x", pady=10)
-                lbl(c, text, 13, bold=True,
+                tk.Frame(current, bg=INPUT_BG, height=1).pack(
+                    fill="x", pady=(12, 8))
+                lbl(current, text, 13, bold=True,
                     color=color, bg=CARD_COLOR).pack(anchor="w")
             except Exception:
                 pass
 
-        tk.Frame(c, bg=INPUT_BG, height=1).pack(fill="x", pady=10)
-        lbl(c,
-            "To upgrade or renew, contact the front desk or admin.",
-            9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w")
+
+        # ── Change plan card ──────────────────────────────────
+        change = card(f, padx=24, pady=18)
+        change.pack(fill="x", pady=(0, 16))
+
+        lbl(change, "Change Membership Plan", 12,
+            bold=True, bg=CARD_COLOR).pack(anchor="w")
+        lbl(change,
+            "Select a plan below and click Upgrade to apply it.",
+            9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(
+            anchor="w", pady=(2, 14))
+
+        conn   = self.user._db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM membership_plans ORDER BY price")
+        plans = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+
+        self._plan_var = tk.StringVar(value=plan)
+
+        plans_frame = tk.Frame(change, bg=CARD_COLOR)
+        plans_frame.pack(fill="x", pady=(0, 14))
+
+        for i, p in enumerate(plans):
+            row = tk.Frame(plans_frame, bg=INPUT_BG, padx=14, pady=10)
+            row.grid(row=i // 2, column=i % 2,
+                     padx=6, pady=4, sticky="ew")
+            plans_frame.columnconfigure(i % 2, weight=1)
+
+            rb = tk.Radiobutton(
+                row,
+                variable=self._plan_var,
+                value=p["plan_name"],
+                bg=INPUT_BG,
+                activebackground=INPUT_BG,
+                selectcolor=INPUT_BG,
+                cursor="hand2"
+            )
+            rb.pack(side="left")
+
+            info = tk.Frame(row, bg=INPUT_BG)
+            info.pack(side="left", padx=(6, 0))
+
+            lbl(info, p["plan_name"], 11,
+                bold=True, bg=INPUT_BG).pack(anchor="w")
+            lbl(info,
+                f"KES {p['price']:,.0f}"
+                f"  |  {p['duration_months']} month(s)",
+                9, color=SUBTEXT_COLOR, bg=INPUT_BG).pack(anchor="w")
+            lbl(info, p["description"] or "", 8,
+                color=SUBTEXT_COLOR, bg=INPUT_BG).pack(anchor="w")
+
+        def upgrade():
+            selected = self._plan_var.get()
+
+            if selected == plan:
+                messagebox.showinfo(
+                    "No Change",
+                    "You are already on this plan.")
+                return
+
+            sel_plan = next(
+                (p for p in plans if p["plan_name"] == selected),
+                None)
+            if not sel_plan:
+                return
+
+            from dateutil.relativedelta import relativedelta
+            new_start = str(date.today())
+            new_end   = str(
+                date.today() + relativedelta(
+                    months=sel_plan["duration_months"]))
+
+            conn   = self.user._db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE members
+                SET membership_plan  = ?,
+                    membership_start = ?,
+                    membership_end   = ?,
+                    status           = 'Active'
+                WHERE id = ?
+            """, (selected, new_start, new_end,
+                  self.user.member_id))
+            conn.commit()
+            conn.close()
+
+            self.user.load_member_profile()
+
+            # Rebuild sidebar so the status badge stays in sync
+            self._rebuild_sidebar()
+
+            messagebox.showinfo(
+                "Plan Updated",
+                f"Your plan has been changed to {selected}.\n"
+                f"New expiry: {new_end}")
+
+            self.show_membership()
+
+        btn(change, "Upgrade / Change Plan",
+            upgrade).pack(anchor="w")
+
+        # ── Cancel membership card ────────────────────────────
+        cancel_card = card(f, padx=24, pady=16)
+        cancel_card.pack(fill="x", pady=(0, 20))
+
+        lbl(cancel_card, "Cancel Membership", 12,
+            bold=True, bg=CARD_COLOR).pack(anchor="w")
+        lbl(cancel_card,
+            "Cancelling sets your status to Inactive immediately.\n"
+            "You can reactivate by contacting the front desk.",
+            9, color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(
+            anchor="w", pady=(4, 12))
+
+        def cancel():
+            if status == "Inactive":
+                messagebox.showinfo(
+                    "Already Inactive",
+                    "Your membership is already cancelled.")
+                return
+
+            if not messagebox.askyesno(
+                    "Cancel Membership",
+                    "Are you sure you want to cancel your membership?\n"
+                    "Your account will be set to Inactive."):
+                return
+
+            conn   = self.user._db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE members SET status = 'Inactive' WHERE id = ?",
+                (self.user.member_id,))
+            conn.commit()
+            conn.close()
+
+            self.user.load_member_profile()
+
+            # Rebuild sidebar so the status badge updates immediately
+            self._rebuild_sidebar()
+
+            messagebox.showinfo(
+                "Membership Cancelled",
+                "Your membership has been cancelled.\n"
+                "Contact the front desk to reactivate.")
+
+            self.show_membership()
+
+        btn(cancel_card, "Cancel Membership",
+            cancel, bg="#c0392b").pack(anchor="w")
 
     # ── Workout section ───────────────────────────────────────
 
@@ -405,7 +729,6 @@ class MemberDashboard:
         plan = self.user.get_workout_plan()
 
         if not plan:
-            # No plan assigned — show empty state
             c = card(f, padx=28, pady=28)
             c.pack(fill="x")
             lbl(c, "No workout plan assigned yet", 13,
@@ -416,7 +739,6 @@ class MemberDashboard:
                 self.show_chatbot).pack(pady=(14, 0))
             return
 
-        # Display the assigned plan
         c = card(f, padx=28, pady=22)
         c.pack(fill="both", expand=True)
 
@@ -431,20 +753,23 @@ class MemberDashboard:
         lbl(c, "Exercises:", 11,
             bold=True, bg=CARD_COLOR).pack(anchor="w")
 
-        # Read-only text area showing the exercise description
         t = tk.Text(
             c, font=("Arial", 11), bg=INPUT_BG, fg=TEXT_COLOR,
             relief="flat", wrap="word", height=12)
         t.pack(fill="both", expand=True, pady=(8, 0))
         t.insert("1.0", plan.get("exercises", "No details provided."))
-        t.config(state="disabled")   # prevent editing
+        t.config(state="disabled")
 
     # ── Attendance section ────────────────────────────────────
 
     def show_attendance(self):
         """
-        Shows the member's last 30 check-in records in a table,
-        plus a check-in button at the top.
+        Shows the member's last 30 check-in records in a table.
+        Action buttons:
+          - Check In  — adds a new attendance row
+          - Check Out — records check-out time on selected row
+          - Update    — edit the check-in/out time on selected row
+          - Delete    — remove a selected attendance record
         """
         self._clear()
         self._set_nav("Attendance")
@@ -454,25 +779,193 @@ class MemberDashboard:
                "Your last 30 gym visits").pack(
             fill="x", pady=(0, 14))
 
-        btn(f, "Check In Now",
-            self._do_checkin, bg="#27ae60").pack(
-            anchor="w", pady=(0, 10))
+        top = tk.Frame(f, bg=BG_COLOR)
+        top.pack(fill="x", pady=(0, 10))
 
-        cols  = ["#", "Check-In Time", "Check-Out Time"]
-        tree, tf = make_table(f, cols, 16)
+        btn(top, "Check In",
+            self._do_checkin, bg="#27ae60").pack(side="left", padx=(0, 6))
+        btn(top, "Check Out",
+            self._do_checkout, bg="#2980b9").pack(side="left", padx=(0, 6))
+        btn(top, "Update Record",
+            self._update_attendance, bg=CARD_COLOR,
+            fg=TEXT_COLOR).pack(side="left", padx=(0, 6))
+        btn(top, "Delete Record",
+            self._delete_attendance, bg="#c0392b").pack(side="left")
+
+        cols = ["ID", "#", "Check-In Time", "Check-Out Time"]
+        self.att_tree, tf = make_table(f, cols, 16)
         tf.pack(fill="both", expand=True)
 
-        records = self.user.get_attendance_history()
+        self.att_tree.column("ID", width=0, stretch=False)
+        self.att_tree.heading("ID", text="")
 
-        if not records:
-            tree.insert("", "end",
-                        values=("--", "No records yet", "--"))
+        self._load_attendance()
+
+    def _load_attendance(self):
+        """
+        Clears and reloads the attendance table.
+        Fetches the member's last 30 records from the database.
+        """
+        for r in self.att_tree.get_children():
+            self.att_tree.delete(r)
+
+        conn   = self.user._db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, check_in, check_out
+            FROM attendance
+            WHERE member_id = ?
+            ORDER BY check_in DESC
+            LIMIT 30
+        """, (self.user.member_id,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            self.att_tree.insert(
+                "", "end",
+                values=("", "--", "No records yet", "--"))
         else:
-            for i, r in enumerate(records, 1):
-                tree.insert("", "end", values=(
+            for i, r in enumerate(rows, 1):
+                self.att_tree.insert("", "end", values=(
+                    r["id"],
                     i,
                     r["check_in"],
                     r["check_out"] or "--"))
+
+    def _get_selected_attendance(self):
+        """
+        Returns the values of the selected attendance row,
+        or None if nothing is selected.
+        """
+        sel = self.att_tree.selection()
+        if not sel:
+            messagebox.showwarning(
+                "Warning", "Please select a record first.")
+            return None
+        return self.att_tree.item(sel[0])["values"]
+
+    def _do_checkout(self):
+        """
+        Records the current time as the check-out time for
+        the selected attendance row.
+        """
+        vals = self._get_selected_attendance()
+        if not vals:
+            return
+
+        att_id   = vals[0]
+        checkout = vals[3]
+
+        if checkout and checkout != "--":
+            messagebox.showwarning(
+                "Warning",
+                "This record already has a check-out time.")
+            return
+
+        from datetime import datetime
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        conn   = self.user._db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE attendance SET check_out=? WHERE id=?",
+            (now, att_id))
+        conn.commit()
+        conn.close()
+
+        messagebox.showinfo("Checked Out", f"Check-out recorded: {now}")
+        self._load_attendance()
+
+    def _update_attendance(self):
+        """
+        Opens a small popup to edit the check-in and check-out
+        times of the selected attendance record.
+        """
+        vals = self._get_selected_attendance()
+        if not vals:
+            return
+
+        att_id   = vals[0]
+        checkin  = vals[2]
+        checkout = vals[3] if vals[3] != "--" else ""
+
+        win = tk.Toplevel(self.root)
+        win.title("Update Attendance Record")
+        win.geometry("400x280")
+        win.configure(bg=CARD_COLOR)
+        win.resizable(False, False)
+        sw = win.winfo_screenwidth()
+        sh = win.winfo_screenheight()
+        win.geometry(f"400x280+{(sw - 400) // 2}+{(sh - 280) // 2}")
+
+        lbl(win, "Update Attendance Record", 13,
+            bold=True, bg=CARD_COLOR).pack(
+            pady=(18, 4), padx=22, anchor="w")
+        tk.Frame(win, bg=ACCENT_COLOR, height=2).pack(
+            fill="x", padx=22, pady=(0, 14))
+
+        ci_field = form_row(
+            win, "Check-In Time (YYYY-MM-DD HH:MM:SS)",
+            value=checkin)
+        co_field = form_row(
+            win, "Check-Out Time (YYYY-MM-DD HH:MM:SS)",
+            value=checkout)
+
+        def save():
+            new_ci = ci_field.var.get().strip()
+            new_co = co_field.var.get().strip()
+
+            if not new_ci:
+                messagebox.showerror(
+                    "Error", "Check-in time cannot be empty.",
+                    parent=win)
+                return
+
+            conn   = self.user._db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE attendance SET check_in=?, check_out=?"
+                " WHERE id=?",
+                (new_ci, new_co or None, att_id))
+            conn.commit()
+            conn.close()
+
+            messagebox.showinfo(
+                "Updated", "Record updated.", parent=win)
+            win.destroy()
+            self._load_attendance()
+
+        btn(win, "Save Changes", save).pack(
+            fill="x", padx=22, pady=6)
+        btn(win, "Cancel", win.destroy,
+            bg=CARD_COLOR, fg=TEXT_COLOR).pack(
+            fill="x", padx=22)
+
+    def _delete_attendance(self):
+        """
+        Permanently deletes the selected attendance record
+        from the database after confirmation.
+        """
+        vals = self._get_selected_attendance()
+        if not vals:
+            return
+
+        att_id = vals[0]
+
+        if not messagebox.askyesno(
+                "Delete Record",
+                "Delete this attendance record? This cannot be undone."):
+            return
+
+        conn   = self.user._db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "DELETE FROM attendance WHERE id=?", (att_id,))
+        conn.commit()
+        conn.close()
+
+        self._load_attendance()
 
     # ── Progress section ──────────────────────────────────────
 
@@ -491,7 +984,6 @@ class MemberDashboard:
                "Track your weight and BMI over time").pack(
             fill="x", pady=(0, 14))
 
-        # Entry form card
         ec = card(f, padx=20, pady=14)
         ec.pack(fill="x", pady=(0, 14))
         lbl(ec, "Log New Entry", 11,
@@ -501,10 +993,6 @@ class MemberDashboard:
         row.pack(fill="x")
 
         def inline_field(parent, label_text, w=10):
-            """
-            Helper that creates a label + entry inline
-            (no form_row used here so entries sit side by side).
-            """
             lbl(parent, label_text, 9,
                 color=SUBTEXT_COLOR, bg=CARD_COLOR).pack(anchor="w")
             e = tk.Entry(
@@ -514,7 +1002,6 @@ class MemberDashboard:
             e.pack(ipady=7, pady=(2, 0))
             return e
 
-        # Three columns: Weight | Height | Notes
         wf = tk.Frame(row, bg=CARD_COLOR)
         wf.pack(side="left", padx=(0, 12))
         hf = tk.Frame(row, bg=CARD_COLOR)
@@ -535,7 +1022,6 @@ class MemberDashboard:
         btn(ec, "Save Entry",
             self._save_progress).pack(anchor="w", pady=(10, 0))
 
-        # History table
         lbl(f, "Progress History", 12, bold=True).pack(
             anchor="w", pady=(8, 6))
         cols = ["Date", "Weight (kg)", "Height (cm)", "BMI", "Notes"]
@@ -580,7 +1066,6 @@ class MemberDashboard:
         try:
             bmi = self.user.add_progress_entry(float(w), float(h), n)
             messagebox.showinfo("Saved", f"Entry saved. Your BMI: {bmi}")
-            # Clear the input fields after saving
             self._wt.delete(0, "end")
             self._ht.delete(0, "end")
             self._nt.delete(0, "end")
@@ -598,10 +1083,6 @@ class MemberDashboard:
           - A text input field and Send button
           - Quick-question shortcut buttons
           - A welcome message from the bot on load
-
-        Messages are colour-coded:
-          User messages  — orange/yellow
-          FitBot replies — light blue
         """
         self._clear()
         self._set_nav("FitBot Chat")
@@ -611,7 +1092,6 @@ class MemberDashboard:
                "Your personal fitness assistant").pack(
             fill="x", pady=(0, 10))
 
-        # Chat display area — disabled Text widget (read-only)
         cf = tk.Frame(f, bg=CARD_COLOR)
         cf.pack(fill="both", expand=True, pady=(0, 8))
 
@@ -626,7 +1106,6 @@ class MemberDashboard:
         self._chat.pack(fill="both", expand=True)
         sb.config(command=self._chat.yview)
 
-        # Text tags to style user vs bot messages differently
         self._chat.tag_config(
             "user",
             foreground=WARNING_COLOR,
@@ -644,7 +1123,6 @@ class MemberDashboard:
             foreground=ACCENT_COLOR,
             font=("Arial", 9, "bold"))
 
-        # Input row — entry + send button side by side
         ir = tk.Frame(f, bg=CARD_COLOR, pady=8)
         ir.pack(fill="x")
 
@@ -658,7 +1136,6 @@ class MemberDashboard:
 
         btn(ir, "Send", self._send).pack(side="left", padx=(0, 10))
 
-        # Quick-question buttons — pre-filled shortcuts
         sq = tk.Frame(f, bg=BG_COLOR)
         sq.pack(fill="x", pady=(4, 0))
 
@@ -681,17 +1158,15 @@ class MemberDashboard:
                 command=lambda m=s: self._quick(m)
             ).pack(side="left", padx=3, ipady=4, ipadx=6)
 
-        # Show the bot welcome message on load
         self._append(
             "FitBot",
-            self.chatbot.get_welcome_message(),
+            # self.chatbot.get_welcome_message(),
             "bot", "lb")
 
     def _send(self):
         """
         Reads text from the input field, displays the user's
         message, gets a response from the Chatbot, and displays it.
-        Clears the input field after sending.
         """
         txt = self._inp.get().strip()
         if not txt:
@@ -704,7 +1179,7 @@ class MemberDashboard:
     def _quick(self, msg):
         """
         Fills the input field with a preset question and
-        immediately sends it (simulates the user typing it).
+        immediately sends it.
         """
         self._inp.delete(0, "end")
         self._inp.insert(0, msg)
@@ -713,33 +1188,23 @@ class MemberDashboard:
     def _append(self, sender, msg, tag, label_tag):
         """
         Appends a message block to the chat display.
-        The display is temporarily enabled for writing,
-        then locked again to prevent user editing.
-        Auto-scrolls to the latest message.
-
-        Parameters:
-            sender    — display name ("You" or "FitBot")
-            msg       — the message text
-            tag       — text colour tag ("user" or "bot")
-            label_tag — sender name colour tag ("lu" or "lb")
         """
         self._chat.config(state="normal")
         self._chat.insert("end", f"\n{sender}:\n", label_tag)
         self._chat.insert("end", f"{msg}\n",        tag)
         self._chat.config(state="disabled")
-        self._chat.see("end")   # scroll to bottom
+        self._chat.see("end")
 
     # ── Logout ────────────────────────────────────────────────
 
     def logout(self):
         """
-        Asks for confirmation, destroys the dashboard window,
-        and relaunches a fresh login screen.
-        """
+         Asks for confirmation then calls the logout_callback
+         provided by LoginScreen. This destroys the dashboard
+         Toplevel and shows the login screen again — without
+         touching the root window.
+         """
         if messagebox.askyesno("Logout", "Are you sure?"):
-            self.root.destroy()
-            import tkinter as tk2
-            from gui.login_screen import LoginScreen
-            r = tk2.Tk()
-            LoginScreen(r)
-            r.mainloop()
+            if self.logout_callback:
+               self.logout_callback()
+
